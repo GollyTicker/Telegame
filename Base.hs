@@ -24,6 +24,15 @@ data RoomView =
 
 {- want-to: needs also a roomview for transition phase -}
 
+data PhyT = NoMotion | MotionHorz Pos Pos
+data RoomViewT {-transition-} =
+  RoomViewT {
+     timeBeg :: Int
+    ,mapT :: Map
+    ,objectsT :: S.Set (PhyT,PhyObj)
+    {- todo -}
+  }
+
 
 data CurrentObservations =
   OpenView RoomView
@@ -60,7 +69,14 @@ data Map = Map {
   ,env :: M.Map Pos EnvObj
 };
 
-data PlayerActionMnt
+data PlayerActionTotal =
+  PAT { eyesClosedBeg :: Bool
+        ,anticipationBeg :: () {- todo -}
+        ,phyAction :: PlayerActionPhy
+        ,anticipationEnd :: () {- todo -}
+        ,eyesClosedEnd :: Bool
+  }
+;
 
 data PlayerActionPhy =
   MoveL | MoveR
@@ -77,6 +93,10 @@ data PlayerActionPhy =
     ,destTime :: Int
   }
 ;
-  
+
+type GameState = [RoomView]
+
+runTurn :: GameState -> [PlayerActionTotal] -> GameState
+runTurn = undefined
 
 
