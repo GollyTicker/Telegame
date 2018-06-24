@@ -91,11 +91,14 @@ data Map = Map {
 };
 
 data PlayerActionTotal =
-  PAT { eyesClosedBeg :: Bool
-        ,anticipationBeg :: () {- todo -}
+  PAT { eyesClosedBeg :: Bool -- True, if the eyes are closed in the beginning
+        ,anticipationBeg :: () {- todo: player can anticipate anything. though only their observations count -}
         ,phyAction :: PlayerActionPhy
-        ,anticipationEnd :: () {- todo -}
+        ,anticipationEnd :: () {- todo: anticipation also needs to work for closed eyes roomview. -}
         ,eyesClosedEnd :: Bool
+        -- there are two anticipation points.
+        -- both corresponding to the ancitipated change of something before or after the turn and movement.
+        -- during closed eyes, the non-interfering prediction is shown as base for anticipation
   }
 ;
 
