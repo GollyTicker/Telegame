@@ -1,11 +1,12 @@
-
+{-# LANGUAGE FlexibleInstances #-}
 
 module View where
 
 import Base
-import Data.List (intercalate)
+import Data.List (intercalate,transpose)
 import qualified Data.Map as M
 import qualified Data.Set as S
+import Data.Text (split,pack,unpack)
 
 readEnv :: String -> EnvObj
 readEnv "S" = Solid
@@ -22,7 +23,7 @@ readEnv xs = error $ "readEnv: Could not parse " ++ xs
 instance Show EnvObj where
   show (Door n h) = "D"++show n ++ show h
   show Solid = "S"
-  show Blank = " "
+  show Blank = ""
   show Platform = "_"
   show (Switch b) = "sw"++show (toEnum . fromEnum $ b :: Int)
   show (MovingBlock dir tm tc behind) =
@@ -37,11 +38,20 @@ instance Show Map where
 
 show2DMapWith :: M.Map Pos String -> DX -> DY -> M.Map Pos EnvObj -> String
 show2DMapWith info sx sy mp = "  " ++
-  (intercalate "\n  " $ map
-                         (\y -> intercalate "," $ map
-                                                   (\x -> maybe "" id (M.lookup (x,y) info) ++ show (mp M.!(x,y)))
-                                                   [0..sx])
-                         ['A'..sy])
+  (intercalate "\n  "
+    $ map (intercalate ",")
+    $ padspaces
+    $ map (\y -> map
+                  (\x -> g (maybe "" id (M.lookup (x,y) info)) (show (mp M.!(x,y))))
+                  [0..sx])
+          ['A'..sy])
+   where  g x y | x == [] || y == [] = x++ y
+                | otherwise          = x ++" @ "++ y
+          padspaces :: [[String]] -> [[String]]
+          padspaces xss =
+            let n = max 1 . maximum . map length
+                f txs x = replicate (n txs - length x) ' ' ++ x
+            in  transpose $ map (\txs -> map (f txs) txs) (transpose xss)
 
 -- reading maps
 fromNestedList :: [[String]] -> M.Map Pos EnvObj
@@ -49,8 +59,10 @@ fromNestedList =
   M.fromList . concat . zipWith (\y -> zipWith (f y) [0::Int ..]) ['A'..]
   where f y x s = ((x,y),readEnv s)
 
-instance Show RoomView where
-  show (RoomView t (Map (sx,sy) mp) os ps cp) = "RoomView of player "++show cp++" at time "++show t++", mapsize "++show (sx,sy)++"\n"
+instance Show (Specific OpenObs) where
+  show (Specific t p p_t (OpenObs (Map (sx,sy) mp) os ps)) =
+    "Open view of player "++p++show p_t
+    ++" at time "++show t++", mapsize "++show (sx,sy)++"\n"
     ++ show2DMapWith infos sx sy mp
     where 
         mergeS x y = x++" "++y
@@ -58,13 +70,47 @@ instance Show RoomView where
         infos = M.unionWith mergeS
                     (M.fromListWith mergeS . map showSnd . S.toAscList $ os)
                     (M.fromListWith mergeS . map showSnd . S.toAscList $ ps)
-          -- todo: mark current player
+          -- maybe todo: mark current player
+
+instance Show (Specific ClosedObs) where
+  show (Specific t p p_t (ClosedObs pos env os ps)) =
+    "Closed view of player "++p++show p_t
+    ++" at time "++show t++" at position "++show pos++"\n"
+    ++ show2DMapWith infos 0 'A' (M.singleton (0,'A') env)
+    where 
+        mergeS x y = x++" "++y
+        infos = M.unionWith mergeS
+                    (M.fromListWith mergeS . map (\x -> ((0,'A'),show x)) . S.toAscList $ os)
+                    (M.fromListWith mergeS . map (\x -> ((0,'A'),show x)) . S.toAscList $ ps)
+
+
+instance Show PlayerState where
+  show (PSO obs scr) = show obs
+  show (PSC obs scr) = show obs
+  -- todo: show game screen as well
 
 instance Show Player where
-  show (Player s age inv) = s ++ show age ++ invStr
+  show (Player s age o inv) = f (s ++ show age) ++ invStr
     where invStr | S.null inv = ""
-                 | otherwise  = intercalate " " . map show . S.toList $ inv
+                 | otherwise  = "("++(intercalate " " . map show . S.toList $ inv)++")"
+          f x = if not o then "<"++x++">" else x
 
 instance Show PhyObj where
   show Key = "k"
   show (TOrb (c,i)) = 't':c:show i
+
+instance Read Player where
+  readsPrec n s =
+    let opened = head s /= '<'
+        inv 
+          | length (filter (=='(') s) > 0 = S.fromList . map (read . unpack) . split (==' ') . pack . reverse . tail . reverse . tail . dropWhile (/='(') $ s
+          | otherwise = S.empty
+        nameAgeStr = filter (\x -> notElem x "<>") . takeWhile (/='(') $ s
+        ageStr = takeWhile (\x -> elem x "0123456789") . reverse $ nameAgeStr
+        name = take (length nameAgeStr - length ageStr) nameAgeStr
+    in  [(Player name (read ageStr) opened inv,"")]
+
+instance Read PhyObj where
+  readsPrec n "k" = [(Key,"")]
+  readsPrec n ['t',c,i] = [(TOrb (c,read $ i:[]),"")]
+  readsPrec n x = []
