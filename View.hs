@@ -82,12 +82,16 @@ instance Show (Specific ClosedObs) where
         infos = M.unionWith mergeS
                     (M.fromListWith mergeS . map (\x -> ((0,'A'),show x)) . S.toAscList $ os)
                     (M.fromListWith mergeS . map (\x -> ((0,'A'),show x)) . S.toAscList $ ps)
+;
 
+
+indent n str = concat . map f . map (:[]) $ "\n"++str
+  where f "\n" = "\n" ++ replicate n ' '
+        f s    = s
 
 instance Show PlayerState where
-  show (PSO obs scr) = show obs
-  show (PSC obs scr) = show obs
-  -- todo: show game screen as well
+  show (PSO obs scr) = show obs ++ "\nWith screen:" ++ indent 2 (show scr)
+  show (PSC obs scr) = show obs ++ "\nWith screen:" ++ indent 2 (show scr)
 
 instance Show Player where
   show (Player s age o inv) = f (s ++ show age) ++ invStr
