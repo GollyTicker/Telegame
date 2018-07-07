@@ -39,8 +39,8 @@ instance Show BlockContent where
       in finalStr
 ;
 
-show2DBlockContentsMap :: M.Map Pos BlockContent -> Pos -> String
-show2DBlockContentsMap mp (sx,sy) = "  " ++
+show2DMap :: M.Map Pos BlockContent -> Pos -> String
+show2DMap mp (sx,sy) = "  " ++
   (intercalate "\n  "
     $ map (intercalate ",")
     $ padspaces
@@ -54,14 +54,14 @@ instance Show (Specific OpenObs) where
   show (Specific t p p_t (Sized (sx,sy) bcmap)) =
     "Open view of player "++p++show p_t
     ++" at time "++show t++", mapsize "++show (sx,sy)++"\n"
-    ++ show2DBlockContentsMap bcmap (sx,sy)
+    ++ show2DMap bcmap (sx,sy)
           -- maybe todo: mark current player
 
 instance Show (Specific ClosedObs) where
   show (Specific t p p_t (pos,bc)) =
     "Closed view of player "++p++show p_t
     ++" at time "++show t++" at position "++show pos++"\n"
-    ++ show2DBlockContentsMap (M.singleton (0,'A') bc) (0,'A')
+    ++ show2DMap (M.singleton (0,'A') bc) (0,'A')
 ;
 
 

@@ -225,5 +225,8 @@ data PlayerActionT =
 -- players position
 data PlayerWorld = PW (Specific OpenObs) Bool
   deriving (Eq,Ord)
+;
+applypwObs :: PlayerWorld -> (Specific OpenObs -> a) -> (Specific ClosedObs -> a) -> a
+applypwObs (PW sobs b) fo fc = if b then fo sobs else fc (reduceToClosed sobs)
 
 data PlayerWorldT = PWT (Specific OpenObsT) Bool
