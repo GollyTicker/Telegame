@@ -26,41 +26,27 @@ import Data.List (intercalate)
 -- import qualified Constraints as C -- add "-iConstraints" to ghc/i args and copy Constraints folder into this directory
 
 {- coordinate system, x y -}
-type DX = Int
-type DY = Char
 type Time = Int
-
-type Pos = (DX,DY)
+type Pos = (Int,Char)
 data Player = Player String Int Bool (S.Set PhyObj)
   deriving (Eq,Ord)
   {- name, age (steps since beginning), True means eyes are open, inventory -}
 
--- current observations of a specific player
-data Specific a =
-  Specific { -- the observations from the perspective of a specific player
-     time :: Int
-    ,currPlayerName :: String
-    ,currPlayerTime :: Int
-    ,observations :: a
-  } -- using new identifier for the player: product of name and age of the player is uniquely determining
- deriving (Eq, Ord)
-;
-
-data Sized a = Sized {
-   size :: Pos, mapping :: M.Map Pos a
-} deriving (Eq, Ord)
+-- identificaiton based equality for players
+eqById :: Player -> Player -> Bool
+eqById (Player s t _ _) (Player s' t' _ _) = s == s' && t == t'
 
 -- what the contents of a block can be.
 -- during state and transition.
-data BlockContent = BC (S.Set Player) (S.Set PhyObj) EnvObj
+data BlockContent = BC { bcps :: (S.Set Player), bcos :: (S.Set PhyObj), bcenv :: EnvObj }
   deriving (Eq,Ord)
 ;
 
-
-data BlockContentT = BCT
-  (EnvObj,EnvObj,Maybe Dir) -- old env, new env, transition direction of a moving block, if relevant
-  (S.Set (PhyCOT,PhyObj)) -- object motion
-  (S.Set (PlayerActionT,Player))  -- player actions+motion
+data BlockContentT = BCT {
+    bctenvs :: (EnvObj,EnvObj,Maybe Dir) -- old env, new env, transition direction of a moving block, if relevant
+   ,bctos   :: (S.Set (PhyCOT,PhyObj)) -- object motion
+   ,bctps   :: (S.Set (PlayerActionT,Player))  -- player actions+motion
+  }
   deriving (Eq,Ord)
   
 -- Specific OpenObs and Specific ClosedObs
@@ -69,6 +55,23 @@ data BlockContentT = BCT
 type OpenObs = Sized BlockContent
 type ClosedObs =
   (Pos{- current pos in map -}, BlockContent)
+
+-- given a player-specific open-view, it reduces it to
+-- the observations, the player would have, if there eyes were closed.
+-- should be called on a player, that exists in ObenObs and whose eyes are closed.
+reduceToClosed :: Specific OpenObs -> Specific ClosedObs
+reduceToClosed spo@(Specific _ _ _ (Sized pos mp)) = spo {observations = (pos,mp M.! pos)}
+
+-- analogous to above, just during transition.
+-- the player is identified and their movements are traced to give the closed eyes observations.
+-- the player should have their eyes closed.
+reduceToClosedT :: Specific OpenObsT -> Specific ClosedObsT
+reduceToClosedT spo@(Specific _ p_s p_t (Sized _ mp)) =
+  spo { observations = M.filter (any (eqById (Player p_s p_t True S.empty) . snd) . bctps) mp }
+  
+  -- get all block-observations, where player is identified
+;
+
 
 
 {- observations for transition phases -}
@@ -95,6 +98,21 @@ type OpenObsT = Sized BlockContentT
 -- for an explanation: see Telegame workbook
 -- We thus only need to collect a list of observed blicks/fields.
 type ClosedObsT = M.Map Pos BlockContentT
+
+-- current observations of a specific player
+data Specific a =
+  Specific { -- the observations from the perspective of a specific player
+     time :: Int
+    ,currPlayerName :: String
+    ,currPlayerTime :: Int
+    ,observations :: a
+  } -- using new identifier for the player: product of name and age of the player is uniquely determining
+ deriving (Eq, Ord)
+;
+
+data Sized a = Sized {
+   size :: Pos, mapping :: M.Map Pos a
+} deriving (Eq, Ord)
 
 
 data PhyCOT = NoMotionT | MotionT Dir Dir
@@ -192,12 +210,20 @@ data PlayerActionT =
 -- the interactions with the current block become the observations.
 --newtype ScreenView = Specific OpenObs
 
--- TODO: can this be made simpler?
-type OObs = Specific OpenObs
-type CObs = Specific ClosedObs
-type OObsT = Specific OpenObsT
-type CObsT = Specific ClosedObsT
-data PlayerState = PSO OObs OObs | PSC CObs OObs {- lefts are observations, rights are predictions -}
+-- Specific OpenObs   = observations of the whole room from a specific players view
+-- Specific ClosedObs = observations of the current pos from a specific players view
+
+-- Specific OpenObsT = observations of the whole room from a specific players view during transition
+-- Specific ClosedObsT = observations of the blocks a specific player visits and from their view during transition
+
+-- a PlayerWorld has the information of how a room
+-- looks to a player. the bool is True for opened eyes.
+-- then the first attr corresponds to the world-view.
+-- if the eyes are closed, then the first attr corresponds
+-- to the predictions of the player. the actual observations
+-- are the subset that is obtained by only looking at the
+-- players position
+data PlayerWorld = PW (Specific OpenObs) Bool
   deriving (Eq,Ord)
 
-data PlayerStateT = PSOT OObsT | PSCT CObsT
+data PlayerWorldT = PWT (Specific OpenObsT) Bool

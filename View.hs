@@ -70,6 +70,7 @@ indent n str = concat . map f . map (:[]) $ "\n"++str
         f s    = s
 
 {-
+todo: write PlayerWorld show instace. use open-predictions -> closed-view reduction
 instance Show PlayerState where
   show (PSO obs scr) = show obs ++ "\nWith screen:" ++ indent 2 (show scr)
   show (PSC obs scr) = show obs ++ "\nWith screen:" ++ indent 2 (show scr)
