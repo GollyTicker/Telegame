@@ -22,6 +22,7 @@ for incrementally added constraints where no backtracking is done
 
 import qualified Data.Set as S
 import qualified Data.Map as M
+import Data.List (intercalate)
 -- import qualified Constraints as C -- add "-iConstraints" to ghc/i args and copy Constraints folder into this directory
 
 {- coordinate system, x y -}
@@ -43,19 +44,31 @@ data Specific a =
     ,observations :: a
   } -- using new identifier for the player: product of name and age of the player is uniquely determining
  deriving (Eq, Ord)
+;
 
+data Sized a = Sized {
+   size :: Pos, mapping :: M.Map Pos a
+} deriving (Eq, Ord)
+
+-- what the contents of a block can be.
+-- during state and transition.
+data BlockContent = BC (S.Set Player) (S.Set PhyObj) EnvObj
+  deriving (Eq,Ord)
+;
+
+
+data BlockContentT = BCT
+  (EnvObj,EnvObj,Maybe Dir) -- old env, new env, transition direction of a moving block, if relevant
+  (S.Set (PhyCOT,PhyObj)) -- object motion
+  (S.Set (PlayerActionT,Player))  -- player actions+motion
+  deriving (Eq,Ord)
+  
 -- Specific OpenObs and Specific ClosedObs
 -- as well as Specific ObenObs (for open eyes screen view)
 -- and Specific ClosedObs (for closed eyes)
-data OpenObs = OpenObs Map (S.Set (Pos,PhyObj)) (S.Set (Pos,Player))
-  deriving (Eq, Ord)
-data ClosedObs =
-  ClosedObs
-    Pos {- current position in map -}
-    EnvObj {- env at current block -}
-    (S.Set PhyObj)
-    (S.Set Player)
-  deriving (Eq, Ord)
+type OpenObs = Sized BlockContent
+type ClosedObs =
+  (Pos{- current pos in map -}, BlockContent)
 
 
 {- observations for transition phases -}
@@ -75,20 +88,17 @@ data ClosedObs =
 -- Which means, that the player observed the state of the
 -- room, when all was invisible.
 
-{- observation during opened eyes. state before and after the transition. -}
-data OpenObsT = OObsT OpenObs OpenObs
+-- observation during opened eyes. the entire map
+type OpenObsT = Sized BlockContentT
 
 {- observation, if the eyes are closed during transition -}
 -- for an explanation: see Telegame workbook
 -- We thus only need to collect a list of observed blicks/fields.
-type ClosedObsT = M.Map Pos BlockCObsT
-data BlockCObsT = BlockCObsT
-  (EnvObj,EnvObj,Maybe Dir) -- old env, new env, transition direction of a moving block, if relevant
-  (S.Set (PhyCOT,PhyObj)) -- object motion
-  (S.Set (PlayerActionT,Player)) -- player actions+motion
-;
+type ClosedObsT = M.Map Pos BlockContentT
+
 
 data PhyCOT = NoMotionT | MotionT Dir Dir
+  deriving (Eq,Ord)
 -- motion from directon to direction. e.g. Motion R D means, that it came from right and fell down at our block
 -- not all possible values are legitimate. e.g. Motiong L U and Motion L L are invalid.
 data Dir = L | U | R |D
@@ -111,13 +121,7 @@ data EnvObj = Door { needs :: Int, has :: Int } {- # keys needed, # keys inside.
       behind :: EnvObj
     }
   deriving (Eq, Ord)
-
-
-data Map = Map {
-   size :: Pos
-  ,env :: M.Map Pos EnvObj
-} deriving (Eq, Ord)
-
+;
 data PlayerActionTotal =
   PAT { eyesClosedBeg :: Bool -- True, if the eyes are closed in the beginning
         ,anticipationBeg :: ModifMap -- player can anticipate anything. though only their observations count
@@ -154,13 +158,16 @@ data PlayerAction =
     ,sentObjects :: (S.Set Player, S.Set PhyObj)
     ,destTime :: Int
   }
+  deriving (Eq,Ord)
 ;
 
 data EAOnce = PressAndHold -- | more options later...
+  deriving (Eq,Ord)
 data EARep = TraverseDoor
   | InsertKey
   | TakeKey
   | ToogleSwitch
+  deriving (Eq,Ord)
 ;
 
 
@@ -173,6 +180,7 @@ data PlayerActionT =
   | IntermediateMotion Dir Dir -- incoming and outgoing motion
   | Completed PlayerAction -- e.g. MoveR for arriving at the right block. landing from a jump without falling is also counted here
   | CompletedFalling
+  deriving (Eq,Ord)
 ;
 
 -- what the screen shall show for a specific player.
@@ -184,12 +192,12 @@ data PlayerActionT =
 -- the interactions with the current block become the observations.
 --newtype ScreenView = Specific OpenObs
 
+-- TODO: can this be made simpler?
 type OObs = Specific OpenObs
 type CObs = Specific ClosedObs
 type OObsT = Specific OpenObsT
 type CObsT = Specific ClosedObsT
 data PlayerState = PSO OObs OObs | PSC CObs OObs {- lefts are observations, rights are predictions -}
   deriving (Eq,Ord)
-psObs :: PlayerState -> 
 
 data PlayerStateT = PSOT OObsT | PSCT CObsT
