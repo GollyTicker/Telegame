@@ -9,16 +9,25 @@ module Base
 
 {-
 Main todo:
+. anticipation during opened eyes means, specification
+of arrival of new players. it is (strictly) not the same as closing eyes
+and anticipating a new player and opening the eyes.
+Anticipation occurs in two variants.
+Anticipation (of a state) and anticipationT(of a transition).
+
+. implement constraint solving. need to extend constriant-solving
+for incrementally added constraints where no backtracking is done
 . implement game state tansition function
 -}
 
 import qualified Data.Set as S
 import qualified Data.Map as M
-import qualified Data.Sequence as Seq
+-- import qualified Constraints as C -- add "-iConstraints" to ghc/i args and copy Constraints folder into this directory
 
 {- coordinate system, x y -}
 type DX = Int
-type DY = Char 
+type DY = Char
+type Time = Int
 
 type Pos = (DX,DY)
 data Player = Player String Int Bool (S.Set PhyObj)
@@ -37,7 +46,7 @@ data Specific a =
 
 -- Specific OpenObs and Specific ClosedObs
 -- as well as Specific ObenObs (for open eyes screen view)
--- and Specific RoomView (for closed eyes)
+-- and Specific ClosedObs (for closed eyes)
 data OpenObs = OpenObs Map (S.Set (Pos,PhyObj)) (S.Set (Pos,Player))
   deriving (Eq, Ord)
 data ClosedObs =
@@ -72,9 +81,8 @@ data OpenObsT = OObsT OpenObs OpenObs
 {- observation, if the eyes are closed during transition -}
 -- for an explanation: see Telegame workbook
 -- We thus only need to collect a list of observed blicks/fields.
-type ClosedObsT = [BlockCObsT]
-data BlockCObsT =
-  Pos -- observed block position
+type ClosedObsT = M.Map Pos BlockCObsT
+data BlockCObsT = BlockCObsT
   (EnvObj,EnvObj,Maybe Dir) -- old env, new env, transition direction of a moving block, if relevant
   (S.Set (PhyCOT,PhyObj)) -- object motion
   (S.Set (PlayerActionT,Player)) -- player actions+motion
@@ -180,25 +188,8 @@ type OObs = Specific OpenObs
 type CObs = Specific ClosedObs
 type OObsT = Specific OpenObsT
 type CObsT = Specific ClosedObsT
-data PlayerState = PSO OObs OObs | PSC CObs OObs
+data PlayerState = PSO OObs OObs | PSC CObs OObs {- lefts are observations, rights are predictions -}
   deriving (Eq,Ord)
+psObs :: PlayerState -> 
 
 data PlayerStateT = PSOT OObsT | PSCT CObsT
-
--- a gamestate contains all the memories and acitons of all the players as well as the environmental changes
--- it starts with the intial state of the players and adds an evolution
--- of transitions and successive states of the world and the players.
--- each element in the sequence corresponds to an increase of time by 1.
--- e.g. initialGS corresponds to t=0.
--- Data.Sequence is used, because they are good in front+end access:
--- documentation: http://hackage.haskell.org/package/containers-0.5.6.2/docs/Data-Sequence.html
-data GameState = GS {
-     initialGS :: S.Set PlayerState -- an intial player state for each player
-    ,history :: Seq.Seq (S.Set PlayerState, S.Set PlayerStateT)
-      -- the history of the game. each element in the sequence contains the 
-      -- current player states as well as thetransition observations leading to that state.
-      -- the sequence is sorted from most-recent to oldest
-  }
-;
-runTurn :: GameState -> S.Set (Specific PlayerActionTotal) -> GameState
-runTurn = undefined
