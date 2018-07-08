@@ -108,6 +108,9 @@ instance Read PhyObj where
   readsPrec n x = []-- reading maps
 ;
 
+fromString :: String -> M.Map Pos BlockContent
+fromString = fromNestedList . map (map unpack . split (==',') . pack) . lines
+
 fromNestedList :: [[String]] -> M.Map Pos BlockContent
 fromNestedList =
   M.fromList . concat . zipWith (\y -> zipWith (f y) [0::Int ..]) ['A'..]

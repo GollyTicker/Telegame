@@ -13,23 +13,20 @@ import Control.Monad
 
 
 map1_P0 = Specific 0 "P" 0 $ Sized { size = (7,'D'),
-  mapping = fromNestedList
-    [
-      [".P0.","","_","","","tx1 tx0","D00",""]
-     ,["S","","","","","S","S","S"]
-     ,["S","S","","","","S","S","S"]
-     ,["S","S","S","S","S","S","S","S"]
-    ]
+  mapping =
+    fromString $ 
+    ".P0., ,_, , ,tx1 tx0, D00, \n\
+    \   S, , , , ,      S,   S,S\n\
+    \   S,S, , , ,      S,   S,S\n\
+    \   S,S,S,S,S,      S,   S,S"
 }
 
 map1_P1 = Specific 1 "P" 1 $ Sized { size = (7,'D'),
-  mapping = fromNestedList
-    [
-      ["","","_","","","",".<P1>(k). tx0 tx1 D00",""]
-     ,["S","","","","","S","S","S"]
-     ,["S","S","","","","S","S","S"]
-     ,["S","S","S","S","S","S","S","S"]
-    ]
+  mapping = fromString $
+    " , ,_, , , , .<P1>(k). tx0 tx1 D00, \n\
+    \S, , , , , S,   S,S\n\
+    \S,S, , , , S,   S,S\n\
+    \S,S,S,S,S, S,   S,S"
 }
 
 main = do
