@@ -162,8 +162,8 @@ safeTail [] = []
 showSet :: Show a => S.Set a -> String
 showSet = intercalate "\n" . map show . S.toList
 
-instance Show GameState where
-  show (GS s) = "GameState from t="++show minT++" to t=" ++ show maxT ++ ":"
+instance Show GameState where -- TODO: show spacetime
+  show (GS s ch) = "GameState from t="++show minT++" to t=" ++ show maxT ++ ":"
     ++ M.foldlWithKey' f "" s ++ "\n ====== end of history ========"
     where f str t (pws,pwts) =
             str ++ "\n  ======= t = " ++ show t ++ " ======= \n\

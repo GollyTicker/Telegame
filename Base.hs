@@ -1,4 +1,4 @@
-{-# LANGUAGE RankNTypes, ImpredicativeTypes, ExistentialQuantification, FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Base
   where
@@ -10,12 +10,21 @@ module Base
 {-
 Main todo:
 . implement game state tansition function
+. how tosolve player identification problem?
+  simply using an age is problematic for players in loops,
+  where the age is cyclic.
+  However, we can extend age to (Int,Int) and Int.
+  The former means, that the playeris of age fst of
+  a total maximum age of snd (at which age jumps back to 0).
+  The latter means a normal monotonic growing age.
+
+
+. clean up and tidy and refactor
 -}
 
 import qualified Data.Set as S
 import qualified Data.Map as M
 import Data.List (intercalate)
--- import qualified Constraints as C -- add "-iConstraints" to ghc/i args and copy Constraints folder into this directory
 
 {- coordinate system, x y -}
 type Time = Int
@@ -24,7 +33,9 @@ data Player = Player String Int Bool (S.Set PhyObj)
   deriving (Eq,Ord)
   {- name, age (steps since beginning), True means eyes are open, inventory -}
 
--- identificaiton based equality for players
+-- identificaiton based equality for players.
+-- a player is identical to another player,
+-- if they have the same name string and have the same age
 eqById :: Player -> Player -> Bool
 eqById (Player s t _ _) (Player s' t' _ _) = s == s' && t == t'
 
@@ -150,8 +161,6 @@ data PlayerActionTotal =
   }
 -- the order of 'execution' is the order of the records in the declaration
 
--- TODO: does finding player also work with it's age?
-
 type Anticipation = Space (Maybe BlockContent)
 -- an anticipation concerns only the positions with Just.
 -- these positions have a new BlockContent specified as the desired state
@@ -202,6 +211,23 @@ data PlayerActionT =
   deriving (Eq,Ord)
 ;
 
+runpat :: (PlayerAction -> a) -> 
+          (PlayerAction -> a) ->
+          (Dir -> Dir ->   a) ->
+          (PlayerAction -> a) ->
+          a ->
+          PlayerActionT ->
+          a
+runpat init inter intermot compl complf pat = 
+  case pat of
+    Initiated x -> init x
+    Intermediate x -> inter x
+    IntermediateMotion x y -> intermot x y
+    Completed x -> compl x
+    CompletedFalling -> complf
+;
+          
+
 -- what the screen shall show for a specific player.
 -- during closed eyes this corresponds to predictions.
 -- during opened eyes this corresponds to the ordinary open observations.
@@ -227,6 +253,10 @@ data PlayerActionT =
 data PlayerWorld = PW { pwb :: Bool, pwobs :: (Specific OpenObs)}
   deriving (Eq,Ord)
 ;
+
+-- PlayerWorld  ~= Specific (Sized BlockContent )
+-- PlayerWorldT ~= Specific (Sized BlockContentT)
+
 applypwObs :: PlayerWorld -> (Specific OpenObs -> a) -> (Specific ClosedObs -> a) -> a
 applypwObs (PW b sobs) fo fc = if b then fo sobs else fc (reduceToClosed sobs)
 

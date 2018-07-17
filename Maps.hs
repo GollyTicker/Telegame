@@ -80,15 +80,16 @@ map2_P0_t4T = undefined
 -- TODO: add transition states inbetween
 
 map2_initGS :: GameState
-map2_initGS = initGS (S.singleton map2_P0_t0)
+map2_initGS =
+  either error id $ initGS (S.singleton map2_P0_t0)
 
 map2_GS :: GameState
-map2_GS = GS $ M.fromList
+map2_GS = GS (M.fromList
   [(0,(f map2_P0_t0,e map2_P0_t0T)),
    (1,(f map2_P0_t1,e map2_P0_t1T)),
    (2,(f map2_P0_t2,e map2_P0_t2T)),
    (3,(f map2_P0_t3,e map2_P0_t3T)),
-   (4,(f map2_P0_t4,e map2_P0_t4T))]
+   (4,(f map2_P0_t4,e map2_P0_t4T))]) undefined
   where f = S.singleton
         e = const S.empty
 
