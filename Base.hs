@@ -9,14 +9,6 @@ module Base
 
 {-
 Main todo:
-. anticipation during opened eyes means, specification
-of arrival of new players. it is (strictly) not the same as closing eyes
-and anticipating a new player and opening the eyes.
-Anticipation occurs in two variants.
-Anticipation (of a state) and anticipationT(of a transition).
-
-. implement constraint solving. need to extend constriant-solving
-for incrementally added constraints where no backtracking is done
 . implement game state tansition function
 -}
 
@@ -60,7 +52,9 @@ type ClosedObs =
 -- the observations, the player would have, if there eyes were closed.
 -- should be called on a player, that exists in ObenObs and whose eyes are closed.
 reduceToClosed :: Specific OpenObs -> Specific ClosedObs
-reduceToClosed spo@(Specific _ _ _ (Sized pos mp)) = spo {observations = (pos,mp M.! pos)}
+reduceToClosed spo@(Specific _ p_s p_t (Sized _ mp)) = spo {observations = (pos,mp M.! pos)}
+  where xs = M.filter (any (eqById (Player p_s p_t True S.empty)) . bcps) $ mp
+        pos = case (M.toList xs) of ((p,_):_) -> p ; [] -> error "reduceToClosed: Player not found"
 
 -- analogous to above, just during transition.
 -- the player is identified and their movements are traced to give the closed eyes observations.
@@ -97,8 +91,10 @@ type OpenObsT = Sized BlockContentT
 {- observation, if the eyes are closed during transition -}
 -- for an explanation: see Telegame workbook
 -- We thus only need to collect a list of observed blicks/fields.
-type ClosedObsT = M.Map Pos BlockContentT
+type ClosedObsT = Space BlockContentT
 
+type Timed a = M.Map Time a
+type Space a = M.Map Pos a
 -- current observations of a specific player
 data Specific a =
   Specific { -- the observations from the perspective of a specific player
@@ -111,8 +107,8 @@ data Specific a =
 ;
 
 data Sized a = Sized {
-   size :: Pos, mapping :: M.Map Pos a
-} deriving (Eq, Ord)
+   size :: Pos, mapping :: Space a
+} deriving (Show, Eq, Ord)
 
 
 data PhyCOT = NoMotionT | MotionT Dir Dir
@@ -142,20 +138,25 @@ data EnvObj = Door { needs :: Int, has :: Int } {- # keys needed, # keys inside.
 ;
 data PlayerActionTotal =
   PAT { eyesClosedBeg :: Bool -- True, if the eyes are closed in the beginning
-        ,anticipationBeg :: ModifMap -- player can anticipate anything. though only their observations count
+        ,anticipationBeg :: Anticipation -- player can anticipate anything. though only their observations count
         ,phyAction :: PlayerAction
-        ,anticipationEnd :: ModifMap -- anticipation also needs to work for closed eyes roomview
+        ,anticipationT :: AnticipationT  -- anticipate transitions
+        ,anticipationEnd :: Anticipation -- anticipation also needs to work for closed eyes roomview
         ,eyesClosedEnd :: Bool
         -- there are two anticipation points.
         -- both corresponding to the ancitipated change of something before or after the turn and movement.
         -- during closed eyes, the non-interfering prediction is shown as base for anticipation
+        -- AnticipationT describes anticipation of transitions
   }
-;
+-- the order of 'execution' is the order of the records in the declaration
 
-data Modif = M1 PhyObj | M2 Player
+-- TODO: does finding player also work with it's age?
 
-type ModifMap = M.Map Pos (S.Set Modif,S.Set Modif)
--- per Position: removals and additions
+type Anticipation = Space (Maybe BlockContent)
+-- an anticipation concerns only the positions with Just.
+-- these positions have a new BlockContent specified as the desired state
+
+type AnticipationT = Space (Maybe BlockContentT)
 
 data PlayerAction =
   MoveL | MoveR
@@ -223,10 +224,11 @@ data PlayerActionT =
 -- to the predictions of the player. the actual observations
 -- are the subset that is obtained by only looking at the
 -- players position
-data PlayerWorld = PW (Specific OpenObs) Bool
+data PlayerWorld = PW { pwb :: Bool, pwobs :: (Specific OpenObs)}
   deriving (Eq,Ord)
 ;
 applypwObs :: PlayerWorld -> (Specific OpenObs -> a) -> (Specific ClosedObs -> a) -> a
-applypwObs (PW sobs b) fo fc = if b then fo sobs else fc (reduceToClosed sobs)
+applypwObs (PW b sobs) fo fc = if b then fo sobs else fc (reduceToClosed sobs)
 
-data PlayerWorldT = PWT (Specific OpenObsT) Bool
+data PlayerWorldT = PWT { pwtb :: Bool, pwtobs :: (Specific OpenObsT)}
+  deriving (Eq, Ord)

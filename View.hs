@@ -1,12 +1,14 @@
-{-# LANGUAGE FlexibleInstances, ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleInstances, ScopedTypeVariables, StandaloneDeriving #-}
 
 module View where
 
 import Base
+import GameState
 import Data.List (intercalate,transpose)
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Text (split,pack,unpack)
+import Data.Maybe (fromJust)
 
 instance Show EnvObj where
   show (Door n h) = "D"++show n ++ show h
@@ -39,7 +41,14 @@ instance Show BlockContent where
       in finalStr
 ;
 
-show2DMap :: M.Map Pos BlockContent -> Pos -> String
+deriving instance Show PlayerAction
+deriving instance Show PlayerActionT
+deriving instance Show PhyCOT
+deriving instance Show EARep
+deriving instance Show EAOnce
+deriving instance Show BlockContentT -- TODO: visualize lke BlockContentT
+
+show2DMap :: Space BlockContent -> Pos -> String
 show2DMap mp (sx,sy) = "  " ++
   (intercalate "\n  "
     $ map (intercalate ",")
@@ -57,6 +66,14 @@ instance Show (Specific OpenObs) where
     ++ show2DMap bcmap (sx,sy)
           -- maybe todo: mark current player
 
+instance Show PlayerWorld where
+  show pw = applypwObs pw show show
+
+deriving instance Show PlayerWorldT
+
+deriving instance Show (Specific OpenObsT) -- TODO: visualize like OpenObs
+
+
 instance Show (Specific ClosedObs) where
   show (Specific t p p_t (pos,bc)) =
     "Closed view of player "++p++show p_t
@@ -64,17 +81,10 @@ instance Show (Specific ClosedObs) where
     ++ show2DMap (M.singleton (0,'A') bc) (0,'A')
 ;
 
-
+indent :: Int -> String -> String
 indent n str = concat . map f . map (:[]) $ "\n"++str
   where f "\n" = "\n" ++ replicate n ' '
         f s    = s
-
-{-
-todo: write PlayerWorld show instace. use open-predictions -> closed-view reduction
-instance Show PlayerState where
-  show (PSO obs scr) = show obs ++ "\nWith screen:" ++ indent 2 (show scr)
-  show (PSC obs scr) = show obs ++ "\nWith screen:" ++ indent 2 (show scr)
--}
 
 instance Show Player where -- added . at beginning and end for easier parsing
   show (Player s age o inv) = "." ++ f (s ++ show age) ++ invStr ++ "."
@@ -108,10 +118,10 @@ instance Read PhyObj where
   readsPrec n x = []-- reading maps
 ;
 
-fromString :: String -> M.Map Pos BlockContent
+fromString :: String -> Space BlockContent
 fromString = fromNestedList . map (map unpack . split (==',') . pack) . lines
 
-fromNestedList :: [[String]] -> M.Map Pos BlockContent
+fromNestedList :: [[String]] -> Space BlockContent
 fromNestedList =
   M.fromList . concat . zipWith (\y -> zipWith (f y) [0::Int ..]) ['A'..]
   where f y x s = ((x,y),read s)
@@ -148,3 +158,17 @@ safeLast xs = Just $ last xs
 
 safeTail (_:xs) = xs
 safeTail [] = []
+
+showSet :: Show a => S.Set a -> String
+showSet = intercalate "\n" . map show . S.toList
+
+instance Show GameState where
+  show (GS s) = "GameState from t="++show minT++" to t=" ++ show maxT ++ ":"
+    ++ M.foldlWithKey' f "" s ++ "\n ====== end of history ========"
+    where f str t (pws,pwts) =
+            str ++ "\n  ======= t = " ++ show t ++ " ======= \n\
+            \    Player Worlds:" ++ indent 6 (showSet pws)
+            ++ "\n    PlayerWorlds during transition to next time-step:\n"
+            ++ indent 6 (showSet pwts)
+          minT = maybe (error "GameState map should be non-empty") (fst . fst) $ M.minViewWithKey s
+          maxT = maybe (error "GameState map should be non-empty") (fst . fst) $ M.maxViewWithKey s

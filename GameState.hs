@@ -5,43 +5,67 @@ module GameState
 import Base
 import qualified Data.Set as S
 import qualified Data.Map as M
-import qualified Data.Sequence as Seq
 import Data.Foldable
+import Data.Maybe (maybeToList)
 
-{-
-import Control.Monad.ST
-import Control.Monad
-import Data.STRef
--- using ST for local-immutable operations.
--- the M.Map can be replaced by mutable arrays
--- lateron for faster performance
--}
 
 -- a gamestate contains all the memories and acitons of all the players as well as the environmental changes
 -- it starts with the intial state of the players and adds an evolution
 -- of transitions and successive states of the world and the players.
--- each element in the sequence corresponds to an increase of time by 1.
--- e.g. initialGS corresponds to t=0.
--- Data.Sequence is used, because they are good in front+end access:
--- documentation: http://hackage.haskell.org/package/containers-0.5.6.2/docs/Data-Sequence.html
-data GameState = GS {
-     initialGS :: S.Set PlayerWorld -- an intial player state for each player
-    ,obsHistory :: Seq.Seq (S.Set PlayerWorld, S.Set PlayerWorld)
+newtype GameState = GS {
+    getGS :: Timed (S.Set PlayerWorld, S.Set PlayerWorldT)
+       -- an intial player state for each player AND
       -- the history of the observations. each element in the sequence contains the 
-      -- current player states as well as thetransition observations leading to that state.
-      -- the sequence is sorted from most-recent to oldest
-    
+      -- current player states as well as the transition observations following that state.
+
     -- ,consHistory :: C.Net
       -- a represented set of histories which are consistent with the current initialGS and obsHistory
   }
 ;
 
+-- creates initial gamestate from an initial set of player worlds
+initGS :: S.Set PlayerWorld -> GameState
+initGS pws = GS (M.singleton 0 (pws,S.empty))
+
+{-
+map_T :: (BlockContent -> BlockContentT) -> PlayerWorld -> PlayerWorldT
+map_T f (PW b (Specific t cps cpt (Sized s mp))) =
+  PWT b (Specific (t-1))
+-}
+
+-- TODO: define this function
+computeCHfromGS :: GameState -> ConsHistory
+computeCHfromGS = undefined
+
+type Field = (S.Set BlockContent, S.Set BlockContentT)
+type TimePos = (Time,Pos)
+type SpaceTime a = Timed (Space a)
+collectContradictions :: ConsHistory -> S.Set (Time,Pos,Field)
+collectContradictions ch@(CH m size) =
+  S.fromList $
+    do (t,pos) <- enumPosTime size
+       field <- maybeToList (at (t,pos) ch)
+       if isContradiction field
+       then return (t,pos,field)
+       else []
+;
+
+enumPos :: Pos -> [Pos]
+enumPos (x,y) = [(x',y') | x' <- [0..x], y' <- ['A'..y]]
+
+enumPosTime :: TimePos -> [TimePos]
+enumPosTime (t,pos) = [ (t',pos') | t' <- [0..t], pos' <- enumPos pos]
+
+isContradiction :: Field -> Bool
+isContradiction (bc,bcT) = max (S.size bc) (S.size bcT) > 1
+
+at :: (Time,Pos) -> ConsHistory -> Maybe Field
+at (t,pos) ch = (M.lookup t $ getMatrix ch) >>= M.lookup pos
+ 
 data ConsHistory =
   CH {
-    getMatrix  :: M.Map Time (M.Map Pos (S.Set BlockContent))
-   ,getMatrixT :: M.Map Time (M.Map Pos (S.Set BlockContentT))
-   ,chsize :: Pos
-   ,maxTime :: Int
+    getMatrix  :: SpaceTime Field
+   ,chSize :: TimePos
   }
 ;
 -- maxTime: maximum time for which the history is considered. on time progression
@@ -61,26 +85,24 @@ data ConsHistory =
 initConsHistory :: (Time,Pos) -> S.Set PlayerWorld -> ConsHistory
 initConsHistory (t,p) ps =
   let dch = defaultConsHistory (t,p)
-      newMat = foldr' f (getMatrix dch M.! 0) ps
-      f :: PlayerWorld -> (M.Map Pos (S.Set BlockContent)) -> (M.Map Pos (S.Set BlockContent))
+      newMat = foldr' f (M.map fst $ getMatrix dch M.! 0) ps
+      f :: PlayerWorld -> Space (S.Set BlockContent) -> Space (S.Set BlockContent)
       f pw mp =
         applypwObs pw
           (\(Specific 0 _ _ (Sized _ obs)) -> addObs obs mp)
           (\(Specific 0 _ _ blkObs) -> addObs (M.fromList [blkObs]) mp)
       addObs mp mps = M.unionWith S.union (M.map S.singleton mp) mps
-  in  dch { getMatrix = M.singleton 0 newMat }
+  in  dch { getMatrix = M.singleton 0 (M.map (\x -> (x,S.empty)) newMat) }
 ;
 
 defaultConsHistory :: (Time,Pos) -> ConsHistory
 defaultConsHistory (t,p) =
   CH {
-     getMatrix = M.singleton 0 (default2DMap p S.empty)
-    ,getMatrixT = M.singleton 0 (default2DMap p S.empty)
-    ,chsize = p
-    ,maxTime = t
+     getMatrix = M.singleton 0 (default2DMap p (S.empty,S.empty))
+    ,chSize = (t,p)
   }
 
-default2DMap :: Pos -> a -> M.Map Pos a
+default2DMap :: Pos -> a -> Space a
 default2DMap (sx,sy) e =
   M.fromList . concat $ map
                           (\y -> map
@@ -88,12 +110,6 @@ default2DMap (sx,sy) e =
                                   [0..sx])
                           ['A'..sy]
 ;
-
--- textual descriptions of contradictions found in a gamestate.
-inconsistencies :: GameState -> [String]
-inconsistencies gs = undefined
-
--- selfconsistent gs = null inconsistencies
 
 type Failable a = Either String a
 runTurn :: GameState -> S.Set (Specific PlayerActionTotal) -> Failable GameState
