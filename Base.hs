@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts, DeriveFunctor #-}
 
 module Base
   where
@@ -46,7 +46,7 @@ data BlockContent = BC { bcps :: (S.Set Player), bcos :: (S.Set PhyObj), bcenv :
 ;
 
 data BlockContentT = BCT {
-    bctenvs :: (EnvObj,EnvObj,Maybe Dir) -- old env, new env, transition direction of a moving block, if relevant
+    bctenvs :: (EnvObj,EnvObj,Maybe Dir) -- old env, new env, transition direction of a moving block, if relevant. only a single moving block may be relevant per grid-block
    ,bctos   :: (S.Set (PhyCOT,PhyObj)) -- object motion
    ,bctps   :: (S.Set (PlayerActionT,Player))  -- player actions+motion
   }
@@ -109,7 +109,7 @@ data Specific a =
     ,size :: Pos
     ,observations :: a
   } -- using identifier for the player: product of name and age of the player is uniquely determining
- deriving (Eq, Ord)
+ deriving (Eq, Ord, Functor)
 ;
 
 data PhyCOT = NoMotionT | MotionT Dir Dir
@@ -161,10 +161,8 @@ data PlayerAction =
   MoveL | MoveR
   | JumpU | JumpUL | JumpUR
   | NoAction
-  | Pick PhyObj
-  | Put PhyObj
-  | ThrowL { dist::Int, obj::PhyObj }
-  | ThrowR { dist::Int, obj::PhyObj }
+  | Pick PhyObj | Put PhyObj
+  | ThrowL { dist::Int, obj::PhyObj } | ThrowR { dist::Int, obj::PhyObj }
   | NewTOs Char
   -- environment actions
   | UseEnvOnce EAOnce
@@ -177,6 +175,33 @@ data PlayerAction =
     ,destTime :: Int
   }
   deriving (Eq,Ord)
+;
+
+runpa :: a -> a ->
+         a -> a -> a ->
+         a -> 
+         (PhyObj -> a) -> (PhyObj -> a) ->
+         (Int -> PhyObj -> a) -> (Int -> PhyObj -> a) ->
+         (Char -> a) ->
+         (EAOnce -> a) ->
+         ([EARep] -> a) ->
+         (Char -> (S.Set Player,S.Set PhyObj) -> Int -> a) ->
+         PlayerAction -> a
+runpa ml mr ju jul jur na pk pt tl tr newto ueo uem tele pa =
+  case pa of MoveL -> ml
+             MoveR -> mr
+             JumpU -> ju
+             JumpUL -> jul
+             JumpUR -> jur
+             NoAction -> na
+             Pick o -> pk o
+             Put o -> pt o
+             ThrowL d o -> tl d o
+             ThrowR d o -> tr d o
+             NewTOs c -> newto c
+             UseEnvOnce eao -> ueo eao
+             UneEnvMult eam -> uem eam
+             Teleport ch os t -> tele ch os t
 ;
 
 data EAOnce = PressAndHold -- | more options later...

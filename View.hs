@@ -28,25 +28,55 @@ padspaces xss =
   let n = max 1 . maximum . map length
       f txs x = replicate (n txs - length x) ' ' ++ x
   in  transpose $ map (\txs -> map (f txs) txs) (transpose xss)
-            
+
+toStrings:: Show a => S.Set a -> [String]
+toStrings = map show . S.elems         
+
 instance Show BlockContent where
   show (BC ps os e) = 
-    let 
-      toStrings:: Show a => S.Set a -> [String]
-      toStrings = map show . S.elems
-      firstHalf = intercalate " " $ toStrings ps ++ toStrings os
-      finalStr = if null (show e) || null firstHalf
+    let firstHalf = intercalate " " $ toStrings ps ++ toStrings os
+        finalStr = if null (show e) || null firstHalf
                 then firstHalf ++ show e
                 else firstHalf ++ " " ++ show e
-      in finalStr
+    in  finalStr
 ;
 
-deriving instance Show PlayerAction
-deriving instance Show PlayerActionT
+
+instance Show BlockContentT where
+  show (BCT evch@(env1,env2,mdir) pts ots) =
+    let firstHalf = intercalate " " $ toStrings pts ++ toStrings ots
+        noChangeEnv = env1 == env2 && mdir == Nothing
+        padTo n str = replicate (n - length str) ' ' ++ str
+        envStr | noChangeEnv = show env1
+               | otherwise   = concat ["[",padTo 1 $ show env1,"] -",maybe "" show mdir,"> [",padTo 1 $ show env2,"]"]
+        finalStr = if noChangeEnv || null firstHalf
+                then firstHalf ++ envStr
+                else firstHalf ++ " " ++ envStr
+    in  finalStr
+;
+
+dot :: (c -> d) -> (a -> b -> c) -> a -> b -> d
+dot f g = \x y -> f (g x y)
+
+instance Show PlayerAction where
+  show  =
+    runpa "->" "<-" "^" "^\\" "/^" "stay"
+          (\o -> ("pick("++ show o++")")) (\o -> ("put("++ show o++")"))
+          (show `dot` ThrowL) (show `dot` ThrowR) (show . NewTOs) show show
+          (\ch (ps,os) t ->
+            concat ["Tele(",show ch,",",
+                intercalate " " $ toStrings ps,",",
+                intercalate " " $ toStrings os,",",
+                show t,")"])
+
+instance Show PlayerActionT where
+  show = runpat (("Init "++). show) (("Inter "++). show)
+                (\x y -> concat["InterMot ",show x," ",show y])
+                (("Cmpl "++). show) "CmplFall "
+;
 deriving instance Show PhyCOT
 deriving instance Show EARep
 deriving instance Show EAOnce
-deriving instance Show BlockContentT -- TODO: visualize lke BlockContentT
 
 show2DMap :: Show a => Space a -> Pos -> String
 show2DMap mp (sx,sy) = "  " ++
