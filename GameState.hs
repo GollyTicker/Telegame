@@ -41,19 +41,11 @@ Assumptions:
 . there is at least one time-step with an observation
   where a non-empty mapsize is used
 -}
-
-applyObservationsAtTime :: Time -> (S.Set PlayerWorld, S.Set PlayerWorldT) ->
-                           ConsHistory -> MayFail ConsHistory
-applyObservationsAtTime = undefined
-
-foldlWithKeyM :: Monad m => (k -> a -> b -> m b) -> b -> M.Map k a -> m b
-foldlWithKeyM f z = foldM (flip $ uncurry f) z . M.toAscList
-
 computeCHfromObs :: TotalObservations -> MayFail ConsHistory
 computeCHfromObs obs =
   do  
     let initCH = defaultConsHistory (maxT,mapSize)
-    foldlWithKeyM applyObservationsAtTime initCH obs
+    applyAllObservations obs initCH
   where mapSize = maybe (0,'A') (getSize . fst) $ M.minView obs
         getSize (pws,_) = case S.elems pws of 
                       [] -> (0,'A')
@@ -89,7 +81,36 @@ maybeToEither e = maybe (Left e) Right
 2. start at beginning and apply player actions one at a time
 
 3. halt at first error (or at all errors)
+
+computeCHfromObs is used during intermediate states of puzzle
+solving to compute a minimally-assuming space-time consistent
+with the current observations.
+the function concreteHistory makes such a minimal space-time
+concrete such that every element is uniquely defined.
 -}
+
+-- applies each observation one after a time.
+-- halts at the firstcontradiction that occurred
+-- if everything is consistent, then a ConsHistory is returned
+applyAllObservations :: Timed (S.Set PlayerWorld, S.Set PlayerWorldT) ->
+                        ConsHistory -> MayFail ConsHistory
+applyAllObservations mp ch = foldlWithKeyM f ch mp
+  where
+    f :: Time -> (S.Set PlayerWorld, S.Set PlayerWorldT) -> ConsHistory -> MayFail ConsHistory
+    f t (pws,pwts) ch = do ch2 <- foldM (applyPW  t) ch  (S.toList pws )
+                           foldM (applyPWT t) ch2 (S.toList pwts)
+    applyPW :: Int -> ConsHistory -> PlayerWorld -> MayFail ConsHistory
+    applyPW t ch pw = undefined
+    applyPWT :: Int -> ConsHistory -> PlayerWorldT -> MayFail ConsHistory
+    applyPWT = undefined
+;
+
+
+concreteHistory :: ConsHistory -> MayFail ConsHistory
+concreteHistory = undefined
+
+foldlWithKeyM :: Monad m => (k -> a -> b -> m b) -> b -> M.Map k a -> m b
+foldlWithKeyM f z = foldM (flip $ uncurry f) z . M.toAscList
 
 -- TEST: consHistory (initGS pws) == initConsHistory _size pws
 
@@ -129,12 +150,11 @@ data ConsHistory =
 -- The contraint matrix is indexed by
 --   [t= 0..maxTime] X {State, Transition} X [p = (0,0)..chsize]
 -- with the domain
---   (t,State,pos)       :: Set BlockContent  = Set (Set Player x Set PhyObj x EnvObj)
---   (t,Transition,pos)  :: Set BlockContentT = Set (BlockCObsT) for the transition starting at t
--- If the Set contains a single element, then that is the unique story.
--- If the Set contains multiple elements, then there is a contradiction,
--- because the content is required to be all elements at the same time
--- If the Set is empty (or Nothing is in the map), then it is unspecified.
+--   (t,State,pos)       :: Set BlockContent  = Maybe (Set Player x Set PhyObj x EnvObj)
+--   (t,Transition,pos)  :: Set BlockContentT = Maybe (BlockCObsT) for the transition starting at t
+-- If the Maybe is Just, then the contents are uniquely determined.
+-- If the Maybe is Nothing, then it is Unkown.
+-- Inconsistent histories cannot be created in the first place.
 
 -- given an initial gamestate, this will compute an initial
 -- constraint solving network for latter use.

@@ -59,7 +59,7 @@ map2_P0_t2T = undefined
 
 map2_P0_t3 = PW True $ Specific 3 "P" 3 $ Sized { size = (7,'D'),
   mapping =
-    fromString $ 
+    fromString $
     " , ,_, , ,.P3., D00, \n\
     \S, , , , ,   S,   S,S\n\
     \S,S, , , ,   S,   S,S\n\
