@@ -48,7 +48,7 @@ deriving instance Show EARep
 deriving instance Show EAOnce
 deriving instance Show BlockContentT -- TODO: visualize lke BlockContentT
 
-show2DMap :: Space BlockContent -> Pos -> String
+show2DMap :: Show a => Space a -> Pos -> String
 show2DMap mp (sx,sy) = "  " ++
   (intercalate "\n  "
     $ map (intercalate ",")
@@ -59,26 +59,35 @@ show2DMap mp (sx,sy) = "  " ++
           ['A'..sy])
 ;
 
-instance Show (Specific OpenObs) where
-  show (Specific t p p_t (Sized (sx,sy) bcmap)) =
-    "Open view of player "++p++show p_t
-    ++" at time "++show t++", mapsize "++show (sx,sy)++"\n"
-    ++ show2DMap bcmap (sx,sy)
-          -- maybe todo: mark current player
+
+
 
 instance Show PlayerWorld where
-  show pw = applypwObs pw show show
+  show = showOpenObs
 
-deriving instance Show PlayerWorldT
+instance Show PlayerWorldT where
+  show opbs@(Specific t p (sx,sy) bcmap) =
+    "Incomplete view of transition"
+    ++ " of player "++ showCompactPlayer p
+    ++" at time "++show t++", mapsize "++show (sx,sy)++"\n"
+    ++ show2DMap bcmap (sx,sy)
+-- TODO: visualize like OpenObs
 
-deriving instance Show (Specific OpenObsT) -- TODO: visualize like OpenObs
+-- show player without inventory
+showCompactPlayer p = init . tail . takeWhile (/='(') $ show p
 
+showOpenObs opbs@(Specific t p (sx,sy) bcmap) =
+  (if eyesOp p then "Opened eyes view" else "Closed eyes guess")
+  ++ " of player "++ showCompactPlayer p
+  ++" at time "++show t++", mapsize "++show (sx,sy)++"\n"
+  ++ show2DMap bcmap (sx,sy)
+  ++ (if eyesOp p then "" else "\nwith " ++ showClosedObs (reduceToClosed opbs))
+        -- maybe todo: mark current player
 
-instance Show (Specific ClosedObs) where
-  show (Specific t p p_t (pos,bc)) =
-    "Closed view of player "++p++show p_t
-    ++" at time "++show t++" at position "++show pos++"\n"
-    ++ show2DMap (M.singleton (0,'A') bc) (0,'A')
+showClosedObs (Specific t p _ (pos,bc)) =
+  "Closed eyes view of player "++showCompactPlayer p
+  ++" at time "++show t++" at position "++show pos++"\n"
+  ++ show2DMap (M.singleton (0,'A') bc) (0,'A')
 ;
 
 indent :: Int -> String -> String
@@ -162,7 +171,7 @@ safeTail [] = []
 showSet :: Show a => S.Set a -> String
 showSet = intercalate "\n" . map show . S.toList
 
-instance Show GameState where -- TODO: show spacetime
+instance Show GameState where -- TODO: show spacetime. cons history
   show (GS s ch) = "GameState from t="++show minT++" to t=" ++ show maxT ++ ":"
     ++ M.foldlWithKey' f "" s ++ "\n ====== end of history ========"
     where f str t (pws,pwts) =

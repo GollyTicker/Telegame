@@ -29,7 +29,7 @@ import Data.List (intercalate)
 {- coordinate system, x y -}
 type Time = Int
 type Pos = (Int,Char)
-data Player = Player String Int Bool (S.Set PhyObj)
+data Player = Player { name :: String, age :: Int, eyesOp :: Bool, inventory :: (S.Set PhyObj)}
   deriving (Eq,Ord)
   {- name, age (steps since beginning), True means eyes are open, inventory -}
 
@@ -52,39 +52,29 @@ data BlockContentT = BCT {
   }
   deriving (Eq,Ord)
   
--- Specific OpenObs and Specific ClosedObs
--- as well as Specific ObenObs (for open eyes screen view)
--- and Specific ClosedObs (for closed eyes)
-type OpenObs = Sized BlockContent
-type ClosedObs =
-  (Pos{- current pos in map -}, BlockContent)
+-- Specific BlockContent and Specific ClosedObs
+-- as well as Specific BlockContent (for open eyes view)
+-- and Specific (Pos,BlockContent) (with a single map entry) (for closed eyes)
+type OpenObs = Specific (Space BlockContent)
+type ClosedObs = Specific (Pos,BlockContent)
 
 -- given a player-specific open-view, it reduces it to
 -- the observations, the player would have, if there eyes were closed.
 -- should be called on a player, that exists in ObenObs and whose eyes are closed.
-reduceToClosed :: Specific OpenObs -> Specific ClosedObs
-reduceToClosed spo@(Specific _ p_s p_t (Sized _ mp)) = spo {observations = (pos,mp M.! pos)}
-  where xs = M.filter (any (eqById (Player p_s p_t True S.empty)) . bcps) $ mp
+reduceToClosed :: OpenObs -> ClosedObs
+reduceToClosed spo@(Specific _ player _ mp) = spo {observations = (pos, mp M.! pos)}
+  where xs = M.filter (any (eqById player) . bcps) $ mp
         pos = case (M.toList xs) of ((p,_):_) -> p ; [] -> error "reduceToClosed: Player not found"
 
 -- analogous to above, just during transition.
 -- the player is identified and their movements are traced to give the closed eyes observations.
 -- the player should have their eyes closed.
-reduceToClosedT :: Specific OpenObsT -> Specific ClosedObsT
-reduceToClosedT spo@(Specific _ p_s p_t (Sized _ mp)) =
-  spo { observations = M.filter (any (eqById (Player p_s p_t True S.empty) . snd) . bctps) mp }
+reduceToClosedT :: OpenObsT -> ClosedObsT
+reduceToClosedT spo@(Specific _ player _ mp) =
+  M.filter (any (eqById player . snd) . bctps) mp
   
   -- get all block-observations, where player is identified
 ;
-
-
-
-{- observations for transition phases -}
--- Specific OpenObsT and Specific ClosedObsT
--- where ´time´ corresponds to beginning time of the transition
- -- view of the room during time-transition
-
-
 
 -- if the eyes are opened during the transition, then
 -- the transition between intial and final state of the room
@@ -96,8 +86,13 @@ reduceToClosedT spo@(Specific _ p_s p_t (Sized _ mp)) =
 -- Which means, that the player observed the state of the
 -- room, when all was invisible.
 
+{- observations for transition phases -}
+-- Specific OpenObsT and Specific ClosedObsT
+-- where ´time´ corresponds to beginning time of the transition
+-- view of the room during time-transition
+
 -- observation during opened eyes. the entire map
-type OpenObsT = Sized BlockContentT
+type OpenObsT = Specific (Space BlockContentT)
 
 {- observation, if the eyes are closed during transition -}
 -- for an explanation: see Telegame workbook
@@ -106,21 +101,16 @@ type ClosedObsT = Space BlockContentT
 
 type Timed a = M.Map Time a
 type Space a = M.Map Pos a
--- current observations of a specific player
+-- current observations of a specific player of a room-view
 data Specific a =
   Specific { -- the observations from the perspective of a specific player
      time :: Int
-    ,currPlayerName :: String
-    ,currPlayerTime :: Int
+    ,currPlayer :: Player
+    ,size :: Pos
     ,observations :: a
-  } -- using new identifier for the player: product of name and age of the player is uniquely determining
+  } -- using identifier for the player: product of name and age of the player is uniquely determining
  deriving (Eq, Ord)
 ;
-
-data Sized a = Sized {
-   size :: Pos, mapping :: Space a
-} deriving (Show, Eq, Ord)
-
 
 data PhyCOT = NoMotionT | MotionT Dir Dir
   deriving (Eq,Ord)
@@ -237,28 +227,19 @@ runpat init inter intermot compl complf pat =
 -- the interactions with the current block become the observations.
 --newtype ScreenView = Specific OpenObs
 
--- Specific OpenObs   = observations of the whole room from a specific players view
--- Specific ClosedObs = observations of the current pos from a specific players view
+-- OpenObs   = observations of the whole room from a specific players view
+-- ClosedObs = observations of the current pos from a specific players view
 
--- Specific OpenObsT = observations of the whole room from a specific players view during transition
--- Specific ClosedObsT = observations of the blocks a specific player visits and from their view during transition
+-- OpenObsT = observations of the whole room from a specific players view during transition
+-- ClosedObsT = observations of the blocks a specific player visits and from their view during transition
 
--- a PlayerWorld has the information of how a room
--- looks to a player. the bool is True for opened eyes.
--- then the first attr corresponds to the world-view.
--- if the eyes are closed, then the first attr corresponds
--- to the predictions of the player. the actual observations
--- are the subset that is obtained by only looking at the
--- players position
-data PlayerWorld = PW { pwb :: Bool, pwobs :: (Specific OpenObs)}
-  deriving (Eq,Ord)
-;
+-- a PlayerWorld has the information of how a room looks to a player.
+type PlayerWorld = OpenObs
+type PlayerWorldT = OpenObsT
 
--- PlayerWorld  ~= Specific (Sized BlockContent )
--- PlayerWorldT ~= Specific (Sized BlockContentT)
+-- PlayerWorld  ~= Time x PlayerID x Space BlockContent
+-- PlayerWorldT ~= Time x PlayerID x Space BlockContentT
 
-applypwObs :: PlayerWorld -> (Specific OpenObs -> a) -> (Specific ClosedObs -> a) -> a
-applypwObs (PW b sobs) fo fc = if b then fo sobs else fc (reduceToClosed sobs)
+applypwObs :: PlayerWorld -> (OpenObs -> a) -> (ClosedObs -> a) -> a
+applypwObs sobs fo fc = if eyesOp (currPlayer sobs) then fo sobs else fc (reduceToClosed sobs)
 
-data PlayerWorldT = PWT { pwtb :: Bool, pwtobs :: (Specific OpenObsT)}
-  deriving (Eq, Ord)

@@ -49,7 +49,7 @@ computeCHfromObs obs =
   where mapSize = maybe (0,'A') (getSize . fst) $ M.minView obs
         getSize (pws,_) = case S.elems pws of 
                       [] -> (0,'A')
-                      (pw:_) -> size . observations . pwobs $ pw
+                      (pw:_) -> size pw
         
         -- the maximum time is either the time of the latest observation
         -- or the latest time referenced in a teleportation
@@ -59,7 +59,7 @@ computeCHfromObs obs =
         maxTeletime :: Int
         maxTeletime = maximum' $ M.map maxPerTime obs
         maxPerTime (_,pwts) = maximum' $ S.map maxPerX pwts
-        maxPerX = maximum' . M.map blockContent . mapping . observations . pwtobs
+        maxPerX = maximum' . M.map blockContent . observations
         blockContent :: BlockContentT -> Int
         blockContent = maximum' . S.map (maxDestTimePAT . fst) . bctps
         maxDestTimePAT pat =
@@ -165,7 +165,7 @@ initConsHistory (t,p) ps =
       f :: PlayerWorld -> Space (S.Set BlockContent) -> Space (S.Set BlockContent)
       f pw mp =
         applypwObs pw
-          (\(Specific 0 _ _ (Sized _ obs)) -> addObs obs mp)
+          (\(Specific 0 _ _ obs) -> addObs obs mp)
           (\(Specific 0 _ _ blkObs) -> addObs (M.fromList [blkObs]) mp)
       addObs mp mps = M.unionWith S.union (M.map S.singleton mp) mps
   in  dch { getMatrix = M.singleton 0 (M.map (\x -> (x,S.empty)) newMat) }

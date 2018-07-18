@@ -10,71 +10,61 @@ import qualified Data.Set as S
 import qualified Data.Map as M
 import Control.Monad
 
-map1_P0 = PW True $ Specific 0 "P" 0 $ Sized { size = (7,'D'),
-  mapping =
-    fromString $ 
+mkP :: Int -> Bool -> Player
+mkP i eo = Player "P" i eo S.empty
+
+map1_P0 = Specific 0 (mkP 0 True) (7,'D') $ fromString
     ".P0., ,_, , ,tx1 tx0, D00, \n\
     \   S, , , , ,      S,   S,S\n\
     \   S,S, , , ,      S,   S,S\n\
     \   S,S,S,S,S,      S,   S,S"
-}
+;
 
-map1_P1 = PW False $ Specific 1 "P" 1 $ Sized { size = (7,'D'),
-  mapping = fromString $
+map1_P1 = Specific 1 (mkP 1 False) (7,'D') $ fromString
     " , ,_, , , , .<P1>(k). tx0 tx1 D00, \n\
     \S, , , , , S,   S,S\n\
     \S,S, , , , S,   S,S\n\
     \S,S,S,S,S, S,   S,S"
-}
 
-map2_P0_t0 = PW True $ Specific 0 "P" 0 $ Sized { size = (7,'D'),
-  mapping =
-    fromString $ 
+map2_P0_t0 = Specific 0 (mkP 0 True) (7,'D') $ fromString
     ".P0., ,tx1 _, , ,tx0, D00, \n\
     \   S, ,     , , ,  S,   S,S\n\
     \   S,S,     , , ,  S,   S,S\n\
     \   S,S,    S,S,S,  S,   S,S"
-}
+
 map2_P0_t0T = undefined
 
-map2_P0_t1 = PW True $ Specific 1 "P" 1 $ Sized { size = (7,'D'),
-  mapping =
-    fromString $ 
+map2_P0_t1 = Specific 1 (mkP 1 True) (7,'D') $ fromString
     " ,    ,tx1 _, , ,tx0, D00, \n\
     \S,.P1.,     , , ,  S,   S,S\n\
     \S,   S,     , , ,  S,   S,S\n\
     \S,   S,    S,S,S,  S,   S,S"
-}
+;
+
 map2_P0_t1T = undefined
 
-map2_P0_t2 = PW True $ Specific 2 "P" 2 $ Sized { size = (7,'D'),
-  mapping =
-    fromString $ 
+map2_P0_t2 = Specific 2 (mkP 2 True) (7,'D') $ fromString
     " , ,.P2. tx1 _, , ,tx0, D00, \n\
     \S, ,     , , ,  S,   S,S\n\
     \S,S,     , , ,  S,   S,S\n\
     \S,S,    S,S,S,  S,   S,S"
-}
+;
 map2_P0_t2T = undefined
 
-map2_P0_t3 = PW True $ Specific 3 "P" 3 $ Sized { size = (7,'D'),
-  mapping =
-    fromString $
+map2_P0_t3 = Specific 3 (mkP 3 True) (7,'D') $ fromString
     " , ,_, , ,.P3., D00, \n\
     \S, , , , ,   S,   S,S\n\
     \S,S, , , ,   S,   S,S\n\
     \S,S,S,S,S,   S,   S,S"
-}
+;
 map2_P0_t3T = undefined
 
-map2_P0_t4 = PW True $ Specific 4 "P" 4 $ Sized { size = (7,'D'),
-  mapping =
-    fromString $ 
+map2_P0_t4 = Specific 4 (mkP 4 True) (7,'D') $ fromString
     " , ,_, , , ,.P4. D00, \n\
     \S, , , , ,S,   S,S\n\
     \S,S, , , ,S,   S,S\n\
     \S,S,S,S,S,S,   S,S"
-}
+;
 map2_P0_t4T = undefined
 
 -- TODO: add transition states inbetween
