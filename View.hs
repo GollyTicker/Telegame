@@ -30,7 +30,10 @@ padspaces xss =
   in  transpose $ map (\txs -> map (f txs) txs) (transpose xss)
 
 toStrings:: Show a => S.Set a -> [String]
-toStrings = map show . S.elems         
+toStrings = map show . S.elems
+
+toStringTpl :: (Show a, Show b) => S.Set (a,b) -> [String]
+toStringTpl = map (\(a,b) -> show a ++ " " ++ show b) . S.elems
 
 instance Show BlockContent where
   show (BC ps os e) = 
@@ -44,7 +47,7 @@ instance Show BlockContent where
 
 instance Show BlockContentT where
   show (BCT evch@(env1,env2,mdir) pts ots) =
-    let firstHalf = intercalate " " $ toStrings pts ++ toStrings ots
+    let firstHalf = intercalate "|" $ toStringTpl pts ++ toStringTpl ots
         noChangeEnv = env1 == env2 && mdir == Nothing
         padTo n str = replicate (n - length str) ' ' ++ str
         envStr | noChangeEnv = show env1
@@ -60,21 +63,38 @@ dot f g = \x y -> f (g x y)
 
 instance Show PlayerAction where
   show  =
-    runpa "->" "<-" "^" "^\\" "/^" "stay"
+    runpa "<-" "->" "^" "^\\" "/^" "stay"
           (\o -> ("pick("++ show o++")")) (\o -> ("put("++ show o++")"))
           (show `dot` ThrowL) (show `dot` ThrowR) (show . NewTOs) show show
           (\ch (ps,os) t ->
-            concat ["Tele(",show ch,",",
-                intercalate " " $ toStrings ps,",",
-                intercalate " " $ toStrings os,",",
-                show t,")"])
+            concat ["tp[",show ch,",",show t,"](",
+                        intercalate " " $ toStrings ps ++ toStrings os,")"])
 
 instance Show PlayerActionT where
-  show = runpat (("Init "++). show) (("Inter "++). show)
-                (\x y -> concat["InterMot ",show x," ",show y])
+  show = runpat (("Init "++). show) -- (("Inter "++). show)
+                (\x y -> concat [show (inv x)," then ",show y])
                 (("Cmpl "++). show) "CmplFall "
 ;
-deriving instance Show PhyCOT
+instance Show PhyCOT where
+  show NoMotionT = "stay"
+  show (MotionT inc out) = show (inv inc) ++ " then " ++ show out
+  show (TParrive c) = "tpv("++show c++")"
+  show (TPexit c) = "tp^("++show c++")"
+  show TPsend = "tpx^"
+  show TPget = "tpxv"
+;
+instance Show Dir where
+  show = rundir "<" "^" ">" "v"
+;
+
+instance Read Dir where
+  readsPrec n str = case str of
+                      "<" -> [(L,"")]
+                      ">" -> [(R,"")]
+                      "^" -> [(U,"")]
+                      "v" -> [(D,"")]
+;
+
 deriving instance Show EARep
 deriving instance Show EAOnce
 
@@ -97,11 +117,11 @@ instance Show PlayerWorld where
 
 instance Show PlayerWorldT where
   show opbs@(Specific t p (sx,sy) bcmap) =
-    "Incomplete view of transition"
+    "View of transition"
     ++ " of player "++ showCompactPlayer p
     ++" at time "++show t++", mapsize "++show (sx,sy)++"\n"
     ++ show2DMap bcmap (sx,sy)
--- TODO: visualize like OpenObs
+;
 
 -- show player without inventory
 showCompactPlayer p = init . tail . takeWhile (/='(') $ show p
@@ -133,7 +153,7 @@ instance Show Player where -- added . at beginning and end for easier parsing
 
 instance Show PhyObj where
   show Key = "k"
-  show (TOrb (c,i)) = 't':c:show i
+  show (TOrb c i) = 't':c:show i
 
 instance Read Player where
   readsPrec n ('.':s') =
@@ -153,7 +173,7 @@ instance Read Player where
 
 instance Read PhyObj where
   readsPrec n "k" = [(Key,"")]
-  readsPrec n ['t',c,i] = [(TOrb (c,read $ i:[]),"")]
+  readsPrec n ['t',c,i] = [(TOrb c (read $ i:[]),"")]
   readsPrec n x = []-- reading maps
 ;
 

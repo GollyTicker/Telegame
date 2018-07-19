@@ -16,7 +16,7 @@ import Control.Monad (foldM)
 -- of transitions and successive states of the world and the players.
 type TotalObservations = Timed (S.Set PlayerWorld, S.Set PlayerWorldT)
 data GameState = GS {
-    playerObs :: TotalObservations
+     psobs :: TotalObservations
        -- an intial player state for each player AND
       -- the history of the observations. each element in the sequence contains the 
       -- current player states as well as the transition observations following that state.
@@ -27,6 +27,11 @@ data GameState = GS {
 ;
 
 type MayFail a = Either String a
+runMayFail :: (String -> a) -> (b -> a) -> MayFail b -> a
+runMayFail = either
+failing :: String -> MayFail a
+failing = Left
+
 
 mkGSfromObs :: TotalObservations -> MayFail GameState
 mkGSfromObs obs = fmap (GS obs) $ computeCHfromObs obs
@@ -63,7 +68,7 @@ computeCHfromObs obs =
         blockContent :: BlockContentT -> Int
         blockContent = maximum' . S.map (maxDestTimePAT . fst) . bctps
         maxDestTimePAT pat =
-          runpat maxDestTimePA maxDestTimePA (\_ _ -> -1) maxDestTimePA (-1) pat
+          runpat maxDestTimePA (\_ _ -> -1) maxDestTimePA (-1) pat
         maxDestTimePA (Teleport _ _ t) = t
         maxDestTimePA _ = -1
 ;
@@ -100,10 +105,10 @@ applyAllObservations mp ch = foldlWithKeyM f ch mp
     f t (pws,pwts) ch = do ch2 <- foldM (applyPW  t) ch  (S.toList pws )
                            foldM (applyPWT t) ch2 (S.toList pwts)
     applyPW :: Int -> ConsHistory -> PlayerWorld -> MayFail ConsHistory
-    applyPW t ch pw = undefined
+    applyPW t ch pw = failing "applyPW not implemented"
     applyPWT :: Int -> ConsHistory -> PlayerWorldT -> MayFail ConsHistory
-    applyPWT = undefined
-;
+    applyPWT t ch pwt = failing "applyPWT not implemented"
+;-- TODO: continue
 
 
 concreteHistory :: ConsHistory -> MayFail ConsHistory

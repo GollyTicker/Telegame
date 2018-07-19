@@ -113,16 +113,24 @@ data Specific a =
 ;
 
 data PhyCOT = NoMotionT | MotionT Dir Dir
+  | TParrive Char | TPexit Char
+  | TPsend | TPget
+  -- when objects lying on ground are sent though tp.
+  -- teleorbs, when they are on ground, have TPsend for the
+  -- source and TPget for the destination orb. both get destroyed then.
   deriving (Eq,Ord)
 -- motion from directon to direction. e.g. Motion R D means, that it came from right and fell down at our block
 -- not all possible values are legitimate. e.g. Motiong L U and Motion L L are invalid.
 data Dir = L | U | R |D
-  deriving (Show,Read,Eq,Ord)
+  deriving (Eq,Ord)
 
-data PhyObj = TOrb TeleOrb | Key
+rundir l u r d dir = case dir of L -> l; U -> u; R -> r; D -> d
+
+inv = rundir R D L U
+
+data PhyObj = TOrb Char Int {- identifier, int is 0 or 1 -}
+            | Key
   deriving (Ord,Eq)
-
-type TeleOrb = (Char,Int) {- identifier, first or second -}
 
 data EnvObj = Door { needs :: Int, has :: Int } {- # keys needed, # keys inside. both have to be <=9 -}
   | Solid
@@ -166,13 +174,13 @@ data PlayerAction =
   | NewTOs Char
   -- environment actions
   | UseEnvOnce EAOnce
-  | UneEnvMult [EARep]
+  | UseEnvMult [EARep]
   -- multiple env. actions can be done at the same time.
   -- e.g. insert key and enter the door
   | Teleport {
      channel :: Char
-    ,sentObjects :: (S.Set Player, S.Set PhyObj)
-    ,destTime :: Int
+    ,sentObjects :: (S.Set Player, S.Set PhyObj) -- teleorbs of channel at source/dest. are not sent
+    ,destTime :: Int -- at finish of arrival. in case of normal space-tp: currTime+1
   }
   deriving (Eq,Ord)
 ;
@@ -200,7 +208,7 @@ runpa ml mr ju jul jur na pk pt tl tr newto ueo uem tele pa =
              ThrowR d o -> tr d o
              NewTOs c -> newto c
              UseEnvOnce eao -> ueo eao
-             UneEnvMult eam -> uem eam
+             UseEnvMult eam -> uem eam
              Teleport ch os t -> tele ch os t
 ;
 
@@ -219,25 +227,26 @@ data EARep = TraverseDoor
 -- in additions to the normals commands. they are complemented here
 data PlayerActionT =
   Initiated PlayerAction
-  | Intermediate PlayerAction -- e.g. MoveR for finish moving to right (before falling down now)
-  | IntermediateMotion Dir Dir -- incoming and outgoing motion
+  -- | Intermediate PlayerAction -- e.g. MoveR for finish moving to right (before falling down now). obsolete due to Motion
+  | Motion Dir Dir -- incoming and outgoing motion. e.g. move-away or jump.
   | Completed PlayerAction -- e.g. MoveR for arriving at the right block. landing from a jump without falling is also counted here
-  | CompletedFalling
-  deriving (Eq,Ord)
+      -- if a non-moving action is executed (e.g. toogle switch),then Completed is used.
+  | CompletedFalling -- completed falling is used, if the player finished their turn
+  deriving (Eq,Ord)  -- on a different block than what ne would expect from the player action
 ;
 
 runpat :: (PlayerAction -> a) -> 
-          (PlayerAction -> a) ->
+        --(PlayerAction -> a) ->
           (Dir -> Dir ->   a) ->
           (PlayerAction -> a) ->
           a ->
           PlayerActionT ->
           a
-runpat init inter intermot compl complf pat = 
+runpat init mot compl complf pat = 
   case pat of
     Initiated x -> init x
-    Intermediate x -> inter x
-    IntermediateMotion x y -> intermot x y
+  --Intermediate x -> inter x
+    Motion x y -> mot x y
     Completed x -> compl x
     CompletedFalling -> complf
 ;
