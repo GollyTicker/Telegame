@@ -277,3 +277,56 @@ type PlayerWorldT = OpenObsT
 applypwObs :: PlayerWorld -> (OpenObs -> a) -> (ClosedObs -> a) -> a
 applypwObs sobs fo fc = if eyesOp (currPlayer sobs) then fo sobs else fc (reduceToClosed sobs)
 
+
+
+type MayFail a = Either String a
+
+runMayFail :: (String -> a) -> (b -> a) -> MayFail b -> a
+runMayFail = either
+
+failing :: String -> MayFail a
+failing = Left
+
+success :: a -> MayFail a
+success = Right
+
+maybeToEither :: e -> Maybe a -> Either e a
+maybeToEither e = maybe (Left e) Right 
+
+
+
+
+-- a gamestate contains all the memories and acitons of all the players as well as the environmental changes
+-- it starts with the intial state of the players and adds an evolution
+-- of transitions and successive states of the world and the players.
+type TotalObservations = Timed (S.Set PlayerWorld, S.Set PlayerWorldT)
+data GameState = GS {
+     psobs :: TotalObservations
+       -- an intial player state for each player AND
+      -- the history of the observations. each element in the sequence contains the 
+      -- current player states as well as the transition observations following that state.
+
+    ,consHistory :: ConsHistory
+    -- a represented set of histories which are consistent with the current observations
+  }
+;
+type Field = (Maybe BlockContent, Maybe BlockContentT)
+type TimePos = (Time,Pos)
+type SpaceTime a = Timed (Space a)
+
+data ConsHistory =
+  CH {
+    getMatrix  :: SpaceTime Field
+   ,chSize :: TimePos
+  }
+;
+-- maxTime: maximum time for which the history is considered. on time progression
+-- or future-time teleportation, this will be extended and filled with defaults.
+-- The contraint matrix is indexed by
+--   [t= 0..maxTime] X {State, Transition} X [p = (0,0)..chsize]
+-- with the domain
+--   (t,State,pos)       :: Maybe BlockContent  = Maybe (Set Player x Set PhyObj x EnvObj)
+--   (t,Transition,pos)  :: Maybe BlockContentT for the transition starting at t
+-- If the Maybe is Just, then the contents are uniquely determined.
+-- If the Maybe is Nothing, then it is Unkown.
+-- Inconsistent histories cannot be created in the first place.

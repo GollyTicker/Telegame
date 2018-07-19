@@ -3,7 +3,7 @@
 module View where
 
 import Base
-import GameState
+-- import GameState
 import Data.List (intercalate,transpose)
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -215,19 +215,20 @@ instance Read BlockContent where
 safeLast [] = Nothing
 safeLast xs = Just $ last xs
 
-safeTail (_:xs) = xs
-safeTail [] = []
-
 showSet :: Show a => S.Set a -> String
 showSet = intercalate "\n" . map show . S.toList
 
 instance Show GameState where -- TODO: show spacetime. cons history
-  show (GS s ch) = "GameState from t="++show minT++" to t=" ++ show maxT ++ ":"
-    ++ M.foldlWithKey' f "" s ++ "\n ====== end of history ========"
+  show (GS s ch) =
+    case (
+      do minT <- maybeToEither "Empty history" . fmap (fst.fst) $ M.minViewWithKey s
+         maxT <- maybeToEither "Empty history" . fmap (fst.fst) $  M.maxViewWithKey s
+         return $ "GameState from t="++show minT++" to t=" ++ show maxT ++ ":"
+                ++ M.foldlWithKey' f "" s ++ "\n ====== end of history ========")
+    of Left e -> "GameState invalid due to: " ++ e
+       Right x -> x
     where f str t (pws,pwts) =
             str ++ "\n  ======= t = " ++ show t ++ " ======= \n\
             \    Player Worlds:" ++ indent 6 (showSet pws)
             ++ "\n    PlayerWorlds during transition to next time-step:\n"
             ++ indent 6 (showSet pwts)
-          minT = maybe (error "GameState map should be non-empty") (fst . fst) $ M.minViewWithKey s
-          maxT = maybe (error "GameState map should be non-empty") (fst . fst) $ M.maxViewWithKey s

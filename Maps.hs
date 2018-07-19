@@ -100,7 +100,7 @@ map2_P0_t4T =
   . fmap2 noAction $ map2_P0_t4
 
 map2_initGS :: GameState
-map2_initGS = either error id $ initGS (S.singleton map2_P0_t0)
+map2_initGS = either (error . ("map2_initGS: "++)) id $ initGS (S.singleton map2_P0_t0)
 
 map2_GS :: GameState
 map2_GS =

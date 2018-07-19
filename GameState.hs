@@ -4,34 +4,13 @@ module GameState
   where
 
 import Base
+import View -- for error messages
 import qualified Data.Set as S
 import qualified Data.Map as M
 import Data.Foldable
 import Data.Maybe (maybeToList)
 import Control.Monad (foldM)
-
-
--- a gamestate contains all the memories and acitons of all the players as well as the environmental changes
--- it starts with the intial state of the players and adds an evolution
--- of transitions and successive states of the world and the players.
-type TotalObservations = Timed (S.Set PlayerWorld, S.Set PlayerWorldT)
-data GameState = GS {
-     psobs :: TotalObservations
-       -- an intial player state for each player AND
-      -- the history of the observations. each element in the sequence contains the 
-      -- current player states as well as the transition observations following that state.
-
-    ,consHistory :: ConsHistory
-    -- a represented set of histories which are consistent with the current observations
-  }
-;
-
-type MayFail a = Either String a
-runMayFail :: (String -> a) -> (b -> a) -> MayFail b -> a
-runMayFail = either
-failing :: String -> MayFail a
-failing = Left
-
+import Control.Arrow (first) -- apply function on fst-element in tuple
 
 mkGSfromObs :: TotalObservations -> MayFail GameState
 mkGSfromObs obs = fmap (GS obs) $ computeCHfromObs obs
@@ -63,8 +42,8 @@ computeCHfromObs obs =
         maximum' = foldr max (-1)
         maxTeletime :: Int
         maxTeletime = maximum' $ M.map maxPerTime obs
-        maxPerTime (_,pwts) = maximum' $ S.map maxPerX pwts
-        maxPerX = maximum' . M.map blockContent . observations
+        maxPerTime (_,pwts) = maximum' $ S.map maxPerSpace pwts
+        maxPerSpace = maximum' . M.map blockContent . observations
         blockContent :: BlockContentT -> Int
         blockContent = maximum' . S.map (maxDestTimePAT . fst) . bctps
         maxDestTimePAT pat =
@@ -72,8 +51,6 @@ computeCHfromObs obs =
         maxDestTimePA (Teleport _ _ t) = t
         maxDestTimePA _ = -1
 ;
-maybeToEither :: e -> Maybe a -> Either e a
-maybeToEither e = maybe (Left e) Right 
 
 {-      
 1. create ConsHistory of maximal size
@@ -104,13 +81,77 @@ applyAllObservations mp ch = foldlWithKeyM f ch mp
     f :: Time -> (S.Set PlayerWorld, S.Set PlayerWorldT) -> ConsHistory -> MayFail ConsHistory
     f t (pws,pwts) ch = do ch2 <- foldM (applyPW  t) ch  (S.toList pws )
                            foldM (applyPWT t) ch2 (S.toList pwts)
-    applyPW :: Int -> ConsHistory -> PlayerWorld -> MayFail ConsHistory
-    applyPW t ch pw = failing "applyPW not implemented"
-    applyPWT :: Int -> ConsHistory -> PlayerWorldT -> MayFail ConsHistory
-    applyPWT t ch pwt = failing "applyPWT not implemented"
-;-- TODO: continue
+;
 
+-- TODO: continue
+applyPW :: Int -> ConsHistory -> PlayerWorld -> MayFail ConsHistory
+applyPW t ch pw = applypwObs pw addOpenObs undefined
+  where
+    addOpenObs = foldlWithKeyM (\pos bc -> addWhenConsistent (t,pos) bc) ch . observations
+    addWhenConsistent :: TimePos -> BlockContent -> ConsHistory -> MayFail ConsHistory
+    addWhenConsistent tpos bc ch =
+      do finalBC <- atCH tpos (failPlayerObsOutOfBounds tpos ch)
+              (maybe (success bc) (\bc' -> if bc == bc' then success bc else failPlayObsContraHistory tpos bc bc'))
+              ch
+         success $ insertCH tpos bc ch
+;
 
+failPlayObsContraHistory :: TimePos -> BlockContent -> BlockContent -> MayFail a
+failPlayObsContraHistory tpos bc bc' = failing $ "applyPW: players observation contradicts with established history at "++show tpos ++". observed: "++show bc ++ ", established: " ++ show bc'
+
+failPlayerObsOutOfBounds :: TimePos -> ConsHistory -> MayFail a
+failPlayerObsOutOfBounds tpos ch = failing $ "applyPW[unusual]: players observation "++show tpos++" is out-of-bounds in history. history size = "++ show (chSize ch)
+
+-- wereConsistent t pos bc ch returns true, if the history
+-- ch with (t,pos) assigned to bc were consistent.
+-- assumes, that ch is consistent already.
+-- it is inconcsistent, if (t,pos) is out-of-bounds
+-- it is inconcsistent, if there is already a differing Just value at (t,pos)
+-- it is consistent, if there is a Nothing at (t,pos) and
+-- the network stays consistent after adding it.
+wereConsistent :: Time -> Pos -> BlockContent -> ConsHistory -> Bool
+wereConsistent = undefined
+
+-- TODO: consistency check can be made faster by memoizing
+-- the bidirectional-dependencies. similarities to arc-consistency algo. for Constraint Solving Networks
+
+-- returns the set of contradiction descriptions currently in the ConsHistory
+contradictions :: ConsHistory -> [(TimePos,String)]
+contradictions ch = {- we assume that out-of-bounds is a problem -}
+  do let (maxT,(maxX,maxY)) = chSize ch
+     t <- [0..maxT]
+     x <- [0..maxX]
+     y <- ['A'..maxY]
+     let curr = (t,(x,y))
+         checkbc = maybe [] (\bc -> runCondChecker (interferesWith curr bc) ch)
+     atCH curr [(curr,"out-of-bounds")] checkbc ch
+;
+
+-- a condition checker is a list of tuples - which is defined for each BlockContent, if it were at time-pos TimePos
+-- each tuple stands for a condition check at the element (time,pos) in the history.
+-- the two functions describe conditions which are to hold
+-- for the state and transition for the time and pos.
+-- if the String is empty, then the condition is true. Otherwise it describes a contradiction.
+type ConditionsChecker = [(Time,Pos,(Maybe BlockContent -> String),(Maybe BlockContentT -> String))]
+interferesWith :: TimePos -> BlockContent -> ConditionsChecker
+interferesWith = undefined
+
+runCondChecker :: ConditionsChecker -> ConsHistory -> [(TimePos,String)]
+runCondChecker = undefined
+
+atCH :: TimePos -> a {- out of bounds -} -> (Maybe BlockContent -> a) -> ConsHistory -> a
+atCH = undefined
+
+-- inserts the blockContent into the cons-history.
+-- assumes, that time-pos is not out-of-bounds
+insertCH :: TimePos -> BlockContent -> ConsHistory -> ConsHistory
+insertCH (t,pos) bc ch = ch { getMatrix = M.adjust (M.adjust (first (const (Just bc))) pos) t (getMatrix ch)}
+
+applyPWT :: Int -> ConsHistory -> PlayerWorldT -> MayFail ConsHistory
+applyPWT t ch pwt = failing "applyPWT not implemented"
+
+-- specializes all Unkowns to a unique history
+-- or fails with contradictions
 concreteHistory :: ConsHistory -> MayFail ConsHistory
 concreteHistory = undefined
 
@@ -119,67 +160,10 @@ foldlWithKeyM f z = foldM (flip $ uncurry f) z . M.toAscList
 
 -- TEST: consHistory (initGS pws) == initConsHistory _size pws
 
-type Field = (S.Set BlockContent, S.Set BlockContentT)
-type TimePos = (Time,Pos)
-type SpaceTime a = Timed (Space a)
-collectContradictions :: ConsHistory -> S.Set (Time,Pos,Field)
-collectContradictions ch@(CH m size) =
-  S.fromList $
-    do (t,pos) <- enumPosTime size
-       field <- maybeToList (at (t,pos) ch)
-       if isContradiction field
-       then return (t,pos,field)
-       else []
-;
-
-enumPos :: Pos -> [Pos]
-enumPos (x,y) = [(x',y') | x' <- [0..x], y' <- ['A'..y]]
-
-enumPosTime :: TimePos -> [TimePos]
-enumPosTime (t,pos) = [ (t',pos') | t' <- [0..t], pos' <- enumPos pos]
-
-isContradiction :: Field -> Bool
-isContradiction (bc,bcT) = max (S.size bc) (S.size bcT) > 1
-
-at :: (Time,Pos) -> ConsHistory -> Maybe Field
-at (t,pos) ch = (M.lookup t $ getMatrix ch) >>= M.lookup pos
-
-data ConsHistory =
-  CH {
-    getMatrix  :: SpaceTime Field
-   ,chSize :: TimePos
-  }
-;
--- maxTime: maximum time for which the history is considered. on time progression
--- or future-time teleportation, this will be extended and filled with defaults.
--- The contraint matrix is indexed by
---   [t= 0..maxTime] X {State, Transition} X [p = (0,0)..chsize]
--- with the domain
---   (t,State,pos)       :: Set BlockContent  = Maybe (Set Player x Set PhyObj x EnvObj)
---   (t,Transition,pos)  :: Set BlockContentT = Maybe (BlockCObsT) for the transition starting at t
--- If the Maybe is Just, then the contents are uniquely determined.
--- If the Maybe is Nothing, then it is Unkown.
--- Inconsistent histories cannot be created in the first place.
-
--- given an initial gamestate, this will compute an initial
--- constraint solving network for latter use.
-initConsHistory :: (Time,Pos) -> S.Set PlayerWorld -> ConsHistory
-initConsHistory (t,p) ps =
-  let dch = defaultConsHistory (t,p)
-      newMat = foldr' f (M.map fst $ getMatrix dch M.! 0) ps
-      f :: PlayerWorld -> Space (S.Set BlockContent) -> Space (S.Set BlockContent)
-      f pw mp =
-        applypwObs pw
-          (\(Specific 0 _ _ obs) -> addObs obs mp)
-          (\(Specific 0 _ _ blkObs) -> addObs (M.fromList [blkObs]) mp)
-      addObs mp mps = M.unionWith S.union (M.map S.singleton mp) mps
-  in  dch { getMatrix = M.singleton 0 (M.map (\x -> (x,S.empty)) newMat) }
-;
-
 defaultConsHistory :: (Time,Pos) -> ConsHistory
 defaultConsHistory (t,p) =
   CH {
-     getMatrix = if t >= 0 then M.singleton 0 (default2DMap p (S.empty,S.empty)) else M.empty
+     getMatrix = if t >= 0 then M.singleton 0 (default2DMap p (Nothing,Nothing)) else M.empty
     ,chSize = (t,p)
   }
 
