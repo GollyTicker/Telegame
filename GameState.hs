@@ -1,14 +1,15 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# OPTIONS_GHC -Wall #-}
 
 module GameState
   where
 
 import Base
-import View -- for error messages
+import View() -- Show instances for error messages
 import qualified Data.Set as S
 import qualified Data.Map as M
-import Data.Foldable
-import Data.Maybe (maybeToList)
+import Data.Foldable({-instances-})
+-- import Data.Maybe (maybeToList)
 import Control.Monad (foldM)
 import Control.Arrow (first) -- apply function on fst-element in tuple
 
@@ -33,7 +34,7 @@ computeCHfromObs obs =
   where mapSize = maybe (0,'A') (getSize . fst) $ M.minView obs
         getSize (pws,_) = case S.elems pws of 
                       [] -> (0,'A')
-                      (pw:_) -> size pw
+                      (pw:_) -> ssize pw
         
         -- the maximum time is either the time of the latest observation
         -- or the latest time referenced in a teleportation
@@ -43,7 +44,7 @@ computeCHfromObs obs =
         maxTeletime :: Int
         maxTeletime = maximum' $ M.map maxPerTime obs
         maxPerTime (_,pwts) = maximum' $ S.map maxPerSpace pwts
-        maxPerSpace = maximum' . M.map blockContent . observations
+        maxPerSpace = maximum' . M.map blockContent . sobservations
         blockContent :: BlockContentT -> Int
         blockContent = maximum' . S.map (maxDestTimePAT . fst) . bctps
         maxDestTimePAT pat =
@@ -76,7 +77,7 @@ concrete such that every element is uniquely defined.
 -- if everything is consistent, then a ConsHistory is returned
 applyAllObservations :: Timed (S.Set PlayerWorld, S.Set PlayerWorldT) ->
                         ConsHistory -> MayFail ConsHistory
-applyAllObservations mp ch = foldlWithKeyM f ch mp
+applyAllObservations mp ch0 = foldlWithKeyM f ch0 mp
   where
     f :: Time -> (S.Set PlayerWorld, S.Set PlayerWorldT) -> ConsHistory -> MayFail ConsHistory
     f t (pws,pwts) ch = do ch2 <- foldM (applyPW  t) ch  (S.toList pws )
@@ -85,22 +86,22 @@ applyAllObservations mp ch = foldlWithKeyM f ch mp
 
 -- TODO: continue
 applyPW :: Int -> ConsHistory -> PlayerWorld -> MayFail ConsHistory
-applyPW t ch pw = applypwObs pw addOpenObs undefined
+applyPW t ch0 pw = applypwObs pw addOpenObs undefined
   where
-    addOpenObs = foldlWithKeyM (\pos bc -> addWhenConsistent (t,pos) bc) ch . observations
+    addOpenObs = foldlWithKeyM (\pos bc -> addWhenConsistent (t,pos) bc) ch0 . sobservations
     addWhenConsistent :: TimePos -> BlockContent -> ConsHistory -> MayFail ConsHistory
     addWhenConsistent tpos bc ch =
       do finalBC <- atCH tpos (failPlayerObsOutOfBounds tpos ch)
               (maybe (success bc) (\bc' -> if bc == bc' then success bc else failPlayObsContraHistory tpos bc bc'))
               ch
-         success $ insertCH tpos bc ch
+         success $ insertCH tpos finalBC ch
 ;
 
 failPlayObsContraHistory :: TimePos -> BlockContent -> BlockContent -> MayFail a
 failPlayObsContraHistory tpos bc bc' = failing $ "applyPW: players observation contradicts with established history at "++show tpos ++". observed: "++show bc ++ ", established: " ++ show bc'
 
 failPlayerObsOutOfBounds :: TimePos -> ConsHistory -> MayFail a
-failPlayerObsOutOfBounds tpos ch = failing $ "applyPW[unusual]: players observation "++show tpos++" is out-of-bounds in history. history size = "++ show (chSize ch)
+failPlayerObsOutOfBounds tpos ch = failing $ "applyPW[unusual]: players observation "++show tpos++" is out-of-bounds in history. history size = "++ show (chsize ch)
 
 -- wereConsistent t pos bc ch returns true, if the history
 -- ch with (t,pos) assigned to bc were consistent.
@@ -118,7 +119,7 @@ wereConsistent = undefined
 -- returns the set of contradiction descriptions currently in the ConsHistory
 contradictions :: ConsHistory -> [(TimePos,String)]
 contradictions ch = {- we assume that out-of-bounds is a problem -}
-  do let (maxT,(maxX,maxY)) = chSize ch
+  do let (maxT,(maxX,maxY)) = chsize ch
      t <- [0..maxT]
      x <- [0..maxX]
      y <- ['A'..maxY]
@@ -145,10 +146,10 @@ atCH = undefined
 -- inserts the blockContent into the cons-history.
 -- assumes, that time-pos is not out-of-bounds
 insertCH :: TimePos -> BlockContent -> ConsHistory -> ConsHistory
-insertCH (t,pos) bc ch = ch { getMatrix = M.adjust (M.adjust (first (const (Just bc))) pos) t (getMatrix ch)}
+insertCH (t,pos) bc ch = ch { chspace = M.adjust (M.adjust (first (const (Just bc))) pos) t (chspace ch)}
 
 applyPWT :: Int -> ConsHistory -> PlayerWorldT -> MayFail ConsHistory
-applyPWT t ch pwt = failing "applyPWT not implemented"
+applyPWT _t _ch _pwt = failing "applyPWT not implemented"
 
 -- specializes all Unkowns to a unique history
 -- or fails with contradictions
@@ -163,8 +164,8 @@ foldlWithKeyM f z = foldM (flip $ uncurry f) z . M.toAscList
 defaultConsHistory :: (Time,Pos) -> ConsHistory
 defaultConsHistory (t,p) =
   CH {
-     getMatrix = if t >= 0 then M.singleton 0 (default2DMap p (Nothing,Nothing)) else M.empty
-    ,chSize = (t,p)
+     chspace = if t >= 0 then M.singleton 0 (default2DMap p (Nothing,Nothing)) else M.empty
+    ,chsize = (t,p)
   }
 
 default2DMap :: Pos -> a -> Space a

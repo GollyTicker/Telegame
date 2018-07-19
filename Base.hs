@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts, DeriveFunctor #-}
+{-# OPTIONS_GHC -Wall #-}
 
 module Base
   where
@@ -24,12 +25,11 @@ Main todo:
 
 import qualified Data.Set as S
 import qualified Data.Map as M
-import Data.List (intercalate)
 
 {- coordinate system, x y -}
 type Time = Int
 type Pos = (Int,Char)
-data Player = Player { name :: String, age :: Int, eyesOp :: Bool, inventory :: (S.Set PhyObj)}
+data Player = Player { pname :: String, page :: Int, peyes :: Bool, pinventory :: (S.Set PhyObj)}
   deriving (Eq,Ord)
   {- name, age (steps since beginning), True means eyes are open, inventory -}
 
@@ -62,7 +62,7 @@ type ClosedObs = Specific (Pos,BlockContent)
 -- the observations, the player would have, if there eyes were closed.
 -- should be called on a player, that exists in ObenObs and whose eyes are closed.
 reduceToClosed :: OpenObs -> ClosedObs
-reduceToClosed spo@(Specific _ player _ mp) = spo {observations = (pos, mp M.! pos)}
+reduceToClosed spo@(Specific _ player _ mp) = spo {sobservations = (pos, mp M.! pos)}
   where xs = M.filter (any (eqById player) . bcps) $ mp
         pos = case (M.toList xs) of ((p,_):_) -> p ; [] -> error "reduceToClosed: Player not found"
 
@@ -70,7 +70,7 @@ reduceToClosed spo@(Specific _ player _ mp) = spo {observations = (pos, mp M.! p
 -- the player is identified and their movements are traced to give the closed eyes observations.
 -- the player should have their eyes closed.
 reduceToClosedT :: OpenObsT -> ClosedObsT
-reduceToClosedT spo@(Specific _ player _ mp) =
+reduceToClosedT (Specific _ player _ mp) =
   M.filter (any (eqById player . snd) . bctps) mp
   
   -- get all block-observations, where player is identified
@@ -104,10 +104,10 @@ type Space a = M.Map Pos a
 -- current observations of a specific player of a room-view
 data Specific a =
   Specific { -- the observations from the perspective of a specific player
-     time :: Int
-    ,currPlayer :: Player
-    ,size :: Pos
-    ,observations :: a
+     stime :: Int
+    ,splayer :: Player
+    ,ssize :: Pos
+    ,sobservations :: a
   } -- using identifier for the player: product of name and age of the player is uniquely determining
  deriving (Eq, Ord, Functor)
 ;
@@ -124,9 +124,11 @@ data PhyCOT = NoMotionT | MotionT Dir Dir
 data Dir = L | U | R |D
   deriving (Eq,Ord)
 
+rundir :: a -> a -> a -> a -> Dir -> a
 rundir l u r d dir = case dir of L -> l; U -> u; R -> r; D -> d
 
-inv = rundir R D L U
+invDir :: Dir -> Dir
+invDir = rundir R D L U
 
 data PhyObj = TOrb Char Int {- identifier, int is 0 or 1 -}
             | Key
@@ -138,10 +140,10 @@ data EnvObj = Door { needs :: Int, has :: Int } {- # keys needed, # keys inside.
   | Blank
   | Switch { active :: Bool }  {- isActive -}
   | MovingBlock {
-      dir :: Dir,
-      timerMax :: Int,
-      timerCurrent :: Int, -- both timers have to be <=99
-      behind :: EnvObj
+      mbDir :: Dir,
+      mbMaxT :: Int,
+      mbCurrT :: Int, -- both timers have to be <=99
+      mcBehind :: EnvObj
     }
   deriving (Eq, Ord)
 ;
@@ -170,7 +172,7 @@ data PlayerAction =
   | JumpU | JumpUL | JumpUR
   | NoAction
   | Pick PhyObj | Put PhyObj
-  | ThrowL { dist::Int, obj::PhyObj } | ThrowR { dist::Int, obj::PhyObj }
+  | ThrowL { tldist::Int, tlobj::PhyObj } | ThrowR { trdist::Int, trobj::PhyObj }
   | NewTOs Char
   -- environment actions
   | UseEnvOnce EAOnce
@@ -178,9 +180,9 @@ data PlayerAction =
   -- multiple env. actions can be done at the same time.
   -- e.g. insert key and enter the door
   | Teleport {
-     channel :: Char
-    ,sentObjects :: (S.Set Player, S.Set PhyObj) -- teleorbs of channel at source/dest. are not sent
-    ,destTime :: Int -- at finish of arrival. in case of normal space-tp: currTime+1
+     tpch :: Char
+    ,tpobjs :: (S.Set Player, S.Set PhyObj) -- teleorbs of channel at source/dest. are not sent
+    ,tpdesttime :: Int -- at finish of arrival. in case of normal space-tp: currTime+1
   }
   deriving (Eq,Ord)
 ;
@@ -242,9 +244,9 @@ runpat :: (PlayerAction -> a) ->
           a ->
           PlayerActionT ->
           a
-runpat init mot compl complf pat = 
+runpat _init mot compl complf pat = 
   case pat of
-    Initiated x -> init x
+    Initiated x -> _init x
   --Intermediate x -> inter x
     Motion x y -> mot x y
     Completed x -> compl x
@@ -275,7 +277,7 @@ type PlayerWorldT = OpenObsT
 -- PlayerWorldT ~= Time x PlayerID x Space BlockContentT
 
 applypwObs :: PlayerWorld -> (OpenObs -> a) -> (ClosedObs -> a) -> a
-applypwObs sobs fo fc = if eyesOp (currPlayer sobs) then fo sobs else fc (reduceToClosed sobs)
+applypwObs sobs fo fc = if peyes (splayer sobs) then fo sobs else fc (reduceToClosed sobs)
 
 
 
@@ -301,12 +303,12 @@ maybeToEither e = maybe (Left e) Right
 -- of transitions and successive states of the world and the players.
 type TotalObservations = Timed (S.Set PlayerWorld, S.Set PlayerWorldT)
 data GameState = GS {
-     psobs :: TotalObservations
+     gsobs :: TotalObservations
        -- an intial player state for each player AND
       -- the history of the observations. each element in the sequence contains the 
       -- current player states as well as the transition observations following that state.
 
-    ,consHistory :: ConsHistory
+    ,gsch :: ConsHistory
     -- a represented set of histories which are consistent with the current observations
   }
 ;
@@ -316,8 +318,8 @@ type SpaceTime a = Timed (Space a)
 
 data ConsHistory =
   CH {
-    getMatrix  :: SpaceTime Field
-   ,chSize :: TimePos
+    chspace  :: SpaceTime Field
+   ,chsize :: TimePos
   }
 ;
 -- maxTime: maximum time for which the history is considered. on time progression

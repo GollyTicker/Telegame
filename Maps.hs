@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts, TupleSections #-}
+{-# OPTIONS_GHC -Wall -fno-warn-missing-signatures #-}
 
 module Maps
   where
@@ -72,7 +73,7 @@ map2_P0_t2 = Specific 2 (mkP 2 True) (7,'D') $ fromString
     \S,S,    S,S,S,  S,   S,S"
 ;
 
-mytp = Teleport {channel = 'x', sentObjects = (one (mkP 2 True),S.empty), destTime = 3} 
+mytp = Teleport {tpch = 'x', tpobjs = (one (mkP 2 True),S.empty), tpdesttime = 3} 
 map2_P0_t2T = 
   fmap (M.insert (2,'A')   $ BCT (Platform,Platform,Nothing) (one (TPsend,TOrb 'x' 1))  (one (Initiated  mytp,mkP 2 True)))
   . fmap (M.insert (5,'A') $ BCT (Blank,Blank,Nothing)       (one (TPget,TOrb 'x' 0)) (one (Completed  mytp,mkP 2 True)))

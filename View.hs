@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleInstances, ScopedTypeVariables, StandaloneDeriving #-}
+{-# OPTIONS_GHC -Wall -fno-warn-orphans #-}
 
 module View where
 
@@ -8,7 +9,6 @@ import Data.List (intercalate,transpose)
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Text (split,pack,unpack)
-import Data.Maybe (fromJust)
 
 instance Show EnvObj where
   show (Door n h) = "D"++show n ++ show h
@@ -46,7 +46,7 @@ instance Show BlockContent where
 
 
 instance Show BlockContentT where
-  show (BCT evch@(env1,env2,mdir) pts ots) =
+  show (BCT (env1,env2,mdir) pts ots) =
     let firstHalf = intercalate "|" $ toStringTpl pts ++ toStringTpl ots
         noChangeEnv = env1 == env2 && mdir == Nothing
         padTo n str = replicate (n - length str) ' ' ++ str
@@ -72,12 +72,12 @@ instance Show PlayerAction where
 
 instance Show PlayerActionT where
   show = runpat (("Init "++). show) -- (("Inter "++). show)
-                (\x y -> concat [show (inv x)," then ",show y])
+                (\x y -> concat [show (invDir x)," then ",show y])
                 (("Cmpl "++). show) "CmplFall "
 ;
 instance Show PhyCOT where
   show NoMotionT = "stay"
-  show (MotionT inc out) = show (inv inc) ++ " then " ++ show out
+  show (MotionT inc out) = show (invDir inc) ++ " then " ++ show out
   show (TParrive c) = "tpv("++show c++")"
   show (TPexit c) = "tp^("++show c++")"
   show TPsend = "tpx^"
@@ -88,11 +88,12 @@ instance Show Dir where
 ;
 
 instance Read Dir where
-  readsPrec n str = case str of
+  readsPrec _ str = case str of
                       "<" -> [(L,"")]
                       ">" -> [(R,"")]
                       "^" -> [(U,"")]
                       "v" -> [(D,"")]
+                      _   -> []
 ;
 
 deriving instance Show EARep
@@ -116,7 +117,7 @@ instance Show PlayerWorld where
   show = showOpenObs
 
 instance Show PlayerWorldT where
-  show opbs@(Specific t p (sx,sy) bcmap) =
+  show (Specific t p (sx,sy) bcmap) =
     "View of transition"
     ++ " of player "++ showCompactPlayer p
     ++" at time "++show t++", mapsize "++show (sx,sy)++"\n"
@@ -124,16 +125,19 @@ instance Show PlayerWorldT where
 ;
 
 -- show player without inventory
+showCompactPlayer :: Player -> String
 showCompactPlayer p = init . tail . takeWhile (/='(') $ show p
 
+showOpenObs :: OpenObs -> String
 showOpenObs opbs@(Specific t p (sx,sy) bcmap) =
-  (if eyesOp p then "Opened eyes view" else "Closed eyes guess")
+  (if peyes p then "Opened eyes view" else "Closed eyes guess")
   ++ " of player "++ showCompactPlayer p
   ++" at time "++show t++", mapsize "++show (sx,sy)++"\n"
   ++ show2DMap bcmap (sx,sy)
-  ++ (if eyesOp p then "" else "\nwith " ++ showClosedObs (reduceToClosed opbs))
+  ++ (if peyes p then "" else "\nwith " ++ showClosedObs (reduceToClosed opbs))
         -- maybe todo: mark current player
-
+;
+showClosedObs :: ClosedObs -> String
 showClosedObs (Specific t p _ (pos,bc)) =
   "Closed eyes view of player "++showCompactPlayer p
   ++" at time "++show t++" at position "++show pos++"\n"
@@ -156,7 +160,7 @@ instance Show PhyObj where
   show (TOrb c i) = 't':c:show i
 
 instance Read Player where
-  readsPrec n ('.':s') =
+  readsPrec _ ('.':s') =
     if safeLast s' == Just '.' 
       then
         let s = init s'
@@ -169,12 +173,12 @@ instance Read Player where
             name = take (length nameAgeStr - length ageStr) nameAgeStr
         in  [(Player name (read ageStr) opened inv,"")]
     else []
-  readsPrec n _ = []
+  readsPrec _ _ = []
 
 instance Read PhyObj where
-  readsPrec n "k" = [(Key,"")]
-  readsPrec n ['t',c,i] = [(TOrb c (read $ i:[]),"")]
-  readsPrec n x = []-- reading maps
+  readsPrec _ "k" = [(Key,"")]
+  readsPrec _ ['t',c,i] = [(TOrb c (read $ i:[]),"")]
+  readsPrec _ _str = []
 ;
 
 fromString :: String -> Space BlockContent
@@ -186,20 +190,20 @@ fromNestedList =
   where f y x s = ((x,y),read s)
 
 instance Read EnvObj where
-  readsPrec n "S" = [(Solid,"")]
-  readsPrec n "_" = [(Platform,"")]
-  readsPrec n "" = [(Blank,"")]
-  readsPrec n " " = [(Blank,"")]
+  readsPrec _ "S" = [(Solid,"")]
+  readsPrec _ "_" = [(Platform,"")]
+  readsPrec _ "" = [(Blank,"")]
+  readsPrec _ " " = [(Blank,"")]
   readsPrec _ ['D',n,h] = [(Door (read (n:"")) (read (h:"")),"")]
-  readsPrec n "sw0" = [(Switch False,"")]
-  readsPrec n "sw1" = [(Switch True,"")]
-  readsPrec n ('m':dir:tm2:tm1:tc2:tc1:rest) =
+  readsPrec _ "sw0" = [(Switch False,"")]
+  readsPrec _ "sw1" = [(Switch True,"")]
+  readsPrec _ ('m':dir:tm2:tm1:tc2:tc1:rest) =
     [(MovingBlock (read (dir:"")) (read (tm2:tm1:"")) (read (tc2:tc1:"")) (read rest),"")]
-  readsPrec _ xs = [] -- error $ "readEnv: Could not parse " ++ xs
+  readsPrec _ _str = [] -- error $ "readEnv: Could not parse " ++ xs
 
 
 instance Read BlockContent where
-  readsPrec n "" = [(BC S.empty S.empty Blank,"")]
+  readsPrec _ "" = [(BC S.empty S.empty Blank,"")]
   readsPrec n str =
     let ws = words str
         e = case safeLast ws of
@@ -212,6 +216,7 @@ instance Read BlockContent where
     in  [(BC ps os e,"")]
 ;
 
+safeLast :: [a] -> Maybe a
 safeLast [] = Nothing
 safeLast xs = Just $ last xs
 
@@ -219,7 +224,7 @@ showSet :: Show a => S.Set a -> String
 showSet = intercalate "\n" . map show . S.toList
 
 instance Show GameState where -- TODO: show spacetime. cons history
-  show (GS s ch) =
+  show (GS s _ch) =
     case (
       do minT <- maybeToEither "Empty history" . fmap (fst.fst) $ M.minViewWithKey s
          maxT <- maybeToEither "Empty history" . fmap (fst.fst) $  M.maxViewWithKey s
