@@ -34,8 +34,16 @@ padspaces xss =
 toStrings:: Show a => MultiSet a -> [String]
 toStrings = map show . MS.elems
 
-toStringMultiMap :: (Show a, Show b) => String -> M.Map a (MultiSet b) -> [String]
-toStringMultiMap z = map (\(x,ms) -> intercalate z $ map (\y -> show y ++ " " ++ show x) $ MS.toAscList ms) . M.toAscList
+-- enclosing encloses each string in the list of strings
+-- with z and z' and then joins with the results
+enclosing :: String -> String -> [String] -> String
+enclosing z z' = intercalate " " . map (\x -> z ++ x ++ z')
+
+toStringMultiMap :: (Show a, Show b) => M.Map a (MultiSet b) -> [String]
+toStringMultiMap = concatMap (\(x,ms) -> map (\y -> show y ++ " " ++ show x) $ MS.toAscList ms) . M.toAscList
+
+toStringMultiSet3 :: (Show a, Show b) => MultiSet (a,b,a) -> [String]
+toStringMultiSet3 = map (\(a,b,a') -> show a ++" "++show b++" "++show a') . MS.toList
 
 instance Show BlockContent where
   show (BC ps os e) = 
@@ -52,8 +60,8 @@ deriving instance Show BCT_Cons
 deriving instance Show EnvT
 
 instance Show BlockContentT where
-  show (BCT (env1,envt,env2) pts ots) =
-    let firstHalf = intercalate "|" $ toStringMultiMap "|" pts ++ toStringMultiMap "|" ots
+  show (BCT (env1,envt,env2) ots pts) =
+    let firstHalf = enclosing "[" "]" $ toStringMultiSet3 pts ++ toStringMultiMap ots 
         noChangeEnv = env1 == env2 && envt == EnvStays
         padTo n str = replicate (n - length str) ' ' ++ str
         envStr | noChangeEnv = show env1

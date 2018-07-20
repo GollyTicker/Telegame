@@ -17,14 +17,15 @@ mkP {-i-} eo = Player "P" {-i-} eo MS.empty
 mkPwith :: Bool -> [PhyObj] -> Player
 mkPwith eo ls = Player "P" eo (MS.fromList ls)
 
-one (act,p) = M.singleton p (MS.singleton act)
+one (act,p) = MS.singleton (p,act,p)
+oneO (mot,o) = M.singleton o (MS.singleton mot)
 
 noAction :: (Functor f, Functor g) => f (g BlockContent) -> f (g BlockContentT)
 noAction = fmap (fmap f)
   where f (BC ps os env) = BCT {
        bctenv = (env,EnvStays,env)
       ,bctos = M.fromListWith MS.union $ map (,MS.singleton NoMotionT) $ MS.toList os
-      ,bctps = M.fromListWith MS.union $ map (,MS.singleton (Completed NoAction)) $ MS.toList ps
+      ,bctps = MS.map (\p -> (p,Completed NoAction,p)) ps
     }
 ;
 
@@ -63,7 +64,7 @@ map2_P0_t1 = Specific 1 (mkP True) (7,'D') $ fromString
 map2_P0_t1T = 
   fmap (M.insert (1,'B')   $ BCT (Blank,EnvStays,Blank) M.empty  (one (Initiated  JumpUR,mkP True)))
   . fmap (M.insert (1,'A') $ BCT (Blank,EnvStays,Blank) M.empty  (one (Motion D R       ,mkP True)))
-  . fmap (M.insert (2,'A') $ BCT (Platform,EnvStays,Platform) (one (NoMotionT,TOrb 'x' 1)) (one (Completed  JumpUR,mkP True)))
+  . fmap (M.insert (2,'A') $ BCT (Platform,EnvStays,Platform) (oneO (NoMotionT,TOrb 'x' 1)) (one (Completed  JumpUR,mkP True)))
   $ noAction map2_P0_t1
 
 map2_P0_t2 = Specific 2 (mkP True) (7,'D') $ fromString
@@ -75,8 +76,8 @@ map2_P0_t2 = Specific 2 (mkP True) (7,'D') $ fromString
 
 mytp = Teleport {tpch = 'x', tpobjs = (MS.singleton (mkP True),MS.empty), tpdesttime = 3} 
 map2_P0_t2T = 
-  fmap (M.insert (2,'A')   $ BCT (Platform,EnvStays,Platform) (one (TPsend,TOrb 'x' 1))  (one (Initiated  mytp,mkP True)))
-  . fmap (M.insert (5,'A') $ BCT (Blank,EnvStays,Blank)       (one (TPget,TOrb 'x' 0)) (one (Completed  mytp,mkP True)))
+  fmap (M.insert (2,'A')   $ BCT (Platform,EnvStays,Platform) (oneO (TPsend,TOrb 'x' 1))  (one (Initiated  mytp,mkP True)))
+  . fmap (M.insert (5,'A') $ BCT (Blank,EnvStays,Blank)       (oneO (TPget,TOrb 'x' 0)) (one (Completed  mytp,mkP True)))
   $ noAction map2_P0_t2
 
 map2_P0_t3 = Specific 3 (mkP True) (7,'D') $ fromString
@@ -122,6 +123,7 @@ main = do
   print map1_P1 >> putChar '\n'
   print (noAction map1_P0)>> putChar '\n'
   print (noAction map1_P1)>> putChar '\n'
-  -- putStrLn "\n\nInitial GameState:" >> print map2_GS
+  putChar '\n'
+  putStrLn "\n\nInitial GameState:" >> print map2_GS
   -- putStrLn "Minimal GameState:" >> print map2_initGS
 ;

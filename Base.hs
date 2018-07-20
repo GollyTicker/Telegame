@@ -16,7 +16,12 @@ Main todo:
   -> web-interface with Elm and interoperate with Haskell
     on server-side?
     -> using example https://github.com/haskell-servant/example-servant-elm
-      -> use stack setup, stack build, etc... perhaps admin-privileges
+      -> FAIL cannot run on windows
+  -> using haste.
+    install https://github.com/valderman/haste-compiler/blob/master/doc/building.md
+    -> great examples:
+       1. http://ifeanyi.co/posts/client-side-haskell/
+       2. 
 
 versions and packages:
 Haskell Platform Core. 8.4.3
@@ -25,6 +30,7 @@ package multiset (version 0.3.4)
 
 import qualified Data.Set as S
 import Data.MultiSet (MultiSet)
+import qualified Data.MultiSet as MS
 import qualified Data.Map as M
 
 {- coordinate system, x y -}
@@ -68,7 +74,7 @@ data BCT_Cons =
 data BlockContentT = BCT {
     bctenv  :: (EnvObj,EnvT,EnvObj) -- old env, environment change, new env (possibly same)
    ,bctos   :: M.Map PhyObj (MultiSet PhyObjT) -- object motion. since objects can be multiple, each object is identified with a multiset of motions
-   ,bctps   :: M.Map Player (MultiSet PlayerT) -- player actions+motion
+   ,bctps   :: MultiSet (Player,PlayerT,Player) -- player before -> action -> player after
   }
   deriving (Eq,Ord)
 ;
@@ -100,7 +106,7 @@ reduceToClosed spo@(Specific _ player _ mp) = spo {sobservations = (pos, mp M.! 
 -- the player should have their eyes closed.
 reduceToClosedT :: OpenObsT -> ClosedObsT
 reduceToClosedT spo@(Specific _ plyr _ mp) =
-  spo { sobservations = M.filter (any (plyr==) . M.keys . bctps) mp}
+  spo { sobservations = M.filter (any (\(p1,_,p2) -> p1 == plyr || p2 == plyr) . MS.toList . bctps) mp}
   -- get all block-observations, where player is identified
 ;
 

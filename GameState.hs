@@ -5,6 +5,7 @@ module GameState
   where
 
 import Base
+import Interference
 import View() -- Show instances for error messages
 import qualified Data.Set as S
 import qualified Data.Map as M
@@ -50,8 +51,8 @@ computeCHfromObs obs =
         maxPerTime (_,pwts) = maximum' $ S.map maxPerSpace pwts
         maxPerSpace = maximum' . M.map blockContent . sobservations
         blockContent :: BlockContentT -> Int
-        blockContent = maximum' . M.map (maximum' . MS.map maxDestTimePAT) . bctps
-        maxDestTimePAT pat =
+        blockContent = maximum' . MS.map (\(_,act,_) -> maxDestTimePT act) . bctps
+        maxDestTimePT pat =
           runpat maxDestTimePA (\_ _ -> -1) maxDestTimePA (-1) pat
         maxDestTimePA (Teleport _ _ t) = t
         maxDestTimePA _ = -1
@@ -129,23 +130,6 @@ contradictions ch = {- we assume that out-of-bounds is a problem -}
      uncurry (++) $ atCHboth curr [(curr,"out-of-bounds")] checkbc checkbct ch
 ;
 
--- a condition checker is a list of tuples - which is defined for each BlockContent, if it were at TimePos (argument of interferes with)
--- each tuple stands for a condition check at the element (time,pos) in the history.
--- the two functions describe conditions which are to hold
--- for the state and transition for the time and pos.
--- if the String is empty, then the conditions holds. if it's non-empty, then it describes the problem
--- TODO: change ConditionsChecker. it doesn't allow for joint-space condition checking.
--- extend via Tuple to a stronger full consHistory checker?
--- this part is going to be rewritten anyways, because of
--- the constraint-solving in concreteHistory
-type ConditionsChecker = [(Time,Pos,(Maybe BlockContent -> String),(Maybe BlockContentT -> String))]
-
-interferesWith :: TimePos -> BlockContent -> ConditionsChecker
-interferesWith _ _ = [] {- TODO: implement this -}
-
-interferesWithT :: TimePos -> BlockContentT -> ConditionsChecker
-interferesWithT _ _ = [] {- TODO: implement this -}
-
 runCondChecker :: TimePos -> ConditionsChecker -> ConsHistory -> [(TimePos,String)]
 runCondChecker tpos ts ch =
   concat [ g chk ++ g chkT | (t',pos',f,ft) <- ts,
@@ -180,14 +164,6 @@ concreteHistory _ = failing "TODO: implement concreteHistory"
 -- after everyhitn has been made concrete, another
 -- run of checks will be done to assure that the inserted elements
 -- didn't create new contradictions
-
-
--- a function crucial for concreteHistory.
--- given a set of conditions to be satisfied,
--- it searches for the simplest BlockContent that satisfies it.
-inferMinimal :: BC_Cons -> MayFail BlockContent
-inferMinimal _ = failing "TODO: implement inferMinimal"
--- TODO: inferMinimalT
 
 foldlWithKeyM :: Monad m => (k -> a -> b -> m b) -> b -> M.Map k a -> m b
 foldlWithKeyM f z = foldM (flip $ uncurry f) z . M.toAscList
