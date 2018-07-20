@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ScopedTypeVariables,TupleSections #-}
 {-# OPTIONS_GHC -Wall #-}
 
 module GameState
@@ -8,10 +8,13 @@ import Base
 import View() -- Show instances for error messages
 import qualified Data.Set as S
 import qualified Data.Map as M
+--import Data.MultiSet (MultiSet)
+import qualified Data.MultiSet as MS
 import Data.Foldable({-instances-})
 -- import Data.Maybe (maybeToList)
 import Control.Monad (foldM)
-import Control.Arrow (first) -- apply function on fst-element in tuple
+import Control.Arrow (first,(***))
+-- first: apply function on fst-element in tuple; f *** g = \(a,b) -> (f a,g b)
 
 mkGSfromObs :: TotalObservations -> MayFail GameState
 mkGSfromObs obs = fmap (GS obs) $ computeCHfromObs obs
@@ -46,7 +49,7 @@ computeCHfromObs obs =
         maxPerTime (_,pwts) = maximum' $ S.map maxPerSpace pwts
         maxPerSpace = maximum' . M.map blockContent . sobservations
         blockContent :: BlockContentT -> Int
-        blockContent = maximum' . S.map (maxDestTimePAT . fst) . bctps
+        blockContent = maximum' . M.map (maximum' . MS.map maxDestTimePAT) . bctps
         maxDestTimePAT pat =
           runpat maxDestTimePA (\_ _ -> -1) maxDestTimePA (-1) pat
         maxDestTimePA (Teleport _ _ t) = t
@@ -75,6 +78,8 @@ concrete such that every element is uniquely defined.
 -- applies each observation one after a time.
 -- halts at the firstcontradiction that occurred
 -- if everything is consistent, then a ConsHistory is returned
+-- TODO: we have a teleportation in future, make sure to extend
+-- the history with unknowns first.
 applyAllObservations :: Timed (S.Set PlayerWorld, S.Set PlayerWorldT) ->
                         ConsHistory -> MayFail ConsHistory
 applyAllObservations mp ch0 = foldlWithKeyM f ch0 mp
@@ -91,10 +96,15 @@ applyPW t ch0 pw = applypwObs pw addOpenObs undefined
     addOpenObs = foldlWithKeyM (\pos bc -> addWhenConsistent (t,pos) bc) ch0 . sobservations
     addWhenConsistent :: TimePos -> BlockContent -> ConsHistory -> MayFail ConsHistory
     addWhenConsistent tpos bc ch =
-      do finalBC <- atCH tpos (failPlayerObsOutOfBounds tpos ch)
-              (maybe (success bc) (\bc' -> if bc == bc' then success bc else failPlayObsContraHistory tpos bc bc'))
-              ch
-         success $ insertCH tpos finalBC ch
+         (\x -> insertCH tpos x ch) <$>
+           atCH tpos (failPlayerObsOutOfBounds tpos ch)
+                (maybe (success bc) (\bc' -> if bc == bc' then success bc else failPlayObsContraHistory tpos bc bc'))
+                ch
+  -- assumes, that ch is consistent already.
+  -- it is inconcsistent, if (t,pos) is out-of-bounds
+  -- it is inconcsistent, if there is already a differing Just value at (t,pos)
+  -- it is consistent, if there is a Nothing at (t,pos) and
+  -- the network stays consistent after adding it.
 ;
 
 failPlayObsContraHistory :: TimePos -> BlockContent -> BlockContent -> MayFail a
@@ -103,20 +113,11 @@ failPlayObsContraHistory tpos bc bc' = failing $ "applyPW: players observation c
 failPlayerObsOutOfBounds :: TimePos -> ConsHistory -> MayFail a
 failPlayerObsOutOfBounds tpos ch = failing $ "applyPW[unusual]: players observation "++show tpos++" is out-of-bounds in history. history size = "++ show (chsize ch)
 
--- wereConsistent t pos bc ch returns true, if the history
--- ch with (t,pos) assigned to bc were consistent.
--- assumes, that ch is consistent already.
--- it is inconcsistent, if (t,pos) is out-of-bounds
--- it is inconcsistent, if there is already a differing Just value at (t,pos)
--- it is consistent, if there is a Nothing at (t,pos) and
--- the network stays consistent after adding it.
-wereConsistent :: Time -> Pos -> BlockContent -> ConsHistory -> Bool
-wereConsistent = undefined
 
 -- TODO: consistency check can be made faster by memoizing
 -- the bidirectional-dependencies. similarities to arc-consistency algo. for Constraint Solving Networks
 
--- returns the set of contradiction descriptions currently in the ConsHistory
+-- returns the set of contradiction descriptions currently in the ConsHistory.
 contradictions :: ConsHistory -> [(TimePos,String)]
 contradictions ch = {- we assume that out-of-bounds is a problem -}
   do let (maxT,(maxX,maxY)) = chsize ch
@@ -124,24 +125,44 @@ contradictions ch = {- we assume that out-of-bounds is a problem -}
      x <- [0..maxX]
      y <- ['A'..maxY]
      let curr = (t,(x,y))
-         checkbc = maybe [] (\bc -> runCondChecker (interferesWith curr bc) ch)
-     atCH curr [(curr,"out-of-bounds")] checkbc ch
+         checkbc  = maybe [] (\bc  -> runCondChecker curr (interferesWith  curr bc ) ch)
+         checkbct = maybe [] (\bct -> runCondChecker curr (interferesWithT curr bct) ch)
+     uncurry (++) $ atCHboth curr [(curr,"out-of-bounds")] checkbc checkbct ch
 ;
 
--- a condition checker is a list of tuples - which is defined for each BlockContent, if it were at time-pos TimePos
+-- a condition checker is a list of tuples - which is defined for each BlockContent, if it were at TimePos (argument of interferes with)
 -- each tuple stands for a condition check at the element (time,pos) in the history.
 -- the two functions describe conditions which are to hold
 -- for the state and transition for the time and pos.
--- if the String is empty, then the condition is true. Otherwise it describes a contradiction.
+-- if the String is empty, then the conditions holds. if it's non-empty, then it describes the problem
+-- TODO: change ConditionsChecker. it doesn't allow for joint-space condition checking.
+-- extend via Tuple to a stronger full consHistory checker?
+-- this part is going to be rewritten anyways, because of
+-- the constraint-solving in concreteHistory
 type ConditionsChecker = [(Time,Pos,(Maybe BlockContent -> String),(Maybe BlockContentT -> String))]
+
 interferesWith :: TimePos -> BlockContent -> ConditionsChecker
 interferesWith = undefined
 
-runCondChecker :: ConditionsChecker -> ConsHistory -> [(TimePos,String)]
-runCondChecker = undefined
+interferesWithT :: TimePos -> BlockContentT -> ConditionsChecker
+interferesWithT = undefined
+
+runCondChecker :: TimePos -> ConditionsChecker -> ConsHistory -> [(TimePos,String)]
+runCondChecker tpos ts ch =
+  concat [ g chk ++ g chkT | (t',pos',f,ft) <- ts,
+              let (chk,chkT) = atCHboth (t',pos') (listFailReferenceOutOfBounds (t',pos')) f ft ch
+                  g x = if null x then [] else [(tpos,x)] ]
+;
+
+listFailReferenceOutOfBounds :: TimePos -> String
+listFailReferenceOutOfBounds other = "referenced block "++show other++" is out-of-bounds for consistency check"
 
 atCH :: TimePos -> a {- out of bounds -} -> (Maybe BlockContent -> a) -> ConsHistory -> a
-atCH = undefined
+atCH tpos z f = fst . atCHboth tpos z f (const (error "atCH: this cannot happen"))
+
+-- combine two accesses into one
+atCHboth :: TimePos -> a {- out of bounds -} -> (Maybe BlockContent -> a) -> (Maybe BlockContentT -> a) -> ConsHistory -> (a,a)
+atCHboth (t,pos) z f g = maybe (z,z) (f *** g) . (>>= M.lookup pos) . M.lookup t . chspace
 
 -- inserts the blockContent into the cons-history.
 -- assumes, that time-pos is not out-of-bounds
@@ -152,9 +173,23 @@ applyPWT :: Int -> ConsHistory -> PlayerWorldT -> MayFail ConsHistory
 applyPWT _t _ch _pwt = failing "applyPWT not implemented"
 
 -- specializes all Unkowns to a unique history
--- or fails with contradictions
+-- or fails with contradictions.
+-- this is called at the end of all inputs to check if the room is solved.
 concreteHistory :: ConsHistory -> MayFail ConsHistory
 concreteHistory = undefined
+-- for this function, inferencability from interactions blocks is nesessary (see Base.hs)
+-- after everyhitn has been made concrete, another
+-- run of checks will be done to assure that the inserted elements
+-- didn't create new contradictions
+
+
+-- a function crucial for concreteHistory.
+-- given a set of conditions to be satisfied,
+-- it searches for the simplest BlockContent that satisfies it.
+inferMinimal :: BC_Cons -> MayFail BlockContent
+inferMinimal = undefined
+
+-- TODO: inferMinimalT
 
 foldlWithKeyM :: Monad m => (k -> a -> b -> m b) -> b -> M.Map k a -> m b
 foldlWithKeyM f z = foldM (flip $ uncurry f) z . M.toAscList
@@ -177,7 +212,7 @@ default2DMap (sx,sy) e =
                           ['A'..sy]
 ;
 
-runTurn :: GameState -> S.Set (Specific PlayerActionTotal) -> MayFail GameState
+runTurn :: GameState -> S.Set (Specific PlayerTotal) -> MayFail GameState
 runTurn = undefined
 {-
 the gamestate argument to runTurn is assumed to be self-consistent.

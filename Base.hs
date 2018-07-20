@@ -11,47 +11,67 @@ module Base
 {-
 Main todo:
 . implement game state tansition function
-. how tosolve player identification problem?
-  simply using an age is problematic for players in loops,
-  where the age is cyclic.
-  However, we can extend age to (Int,Int) and Int.
-  The former means, that the playeris of age fst of
-  a total maximum age of snd (at which age jumps back to 0).
-  The latter means a normal monotonic growing age.
-
-
 . clean up and tidy and refactor
 -}
 
 import qualified Data.Set as S
+import Data.MultiSet (MultiSet)
 import qualified Data.Map as M
 
 {- coordinate system, x y -}
 type Time = Int
 type Pos = (Int,Char)
-data Player = Player { pname :: String, page :: Int, peyes :: Bool, pinventory :: (S.Set PhyObj)}
+data Player = Player { pname :: String{-, page :: Int-}, peyes :: Bool, pinventory :: MultiSet PhyObj}
   deriving (Eq,Ord)
-  {- name, age (steps since beginning), True means eyes are open, inventory -}
+  {- name,(removed age for loops) , True means eyes are open, inventory -}
 
 -- identificaiton based equality for players.
 -- a player is identical to another player,
 -- if they have the same name string and have the same age
 eqById :: Player -> Player -> Bool
-eqById (Player s t _ _) (Player s' t' _ _) = s == s' && t == t'
+eqById (Player s {-_t-} _ _) (Player s' {-_t'-} _ _) = s == s' -- && _t == _t'
 
 -- what the contents of a block can be.
 -- during state and transition.
-data BlockContent = BC { bcps :: (S.Set Player), bcos :: (S.Set PhyObj), bcenv :: EnvObj }
+-- using multisets for objects, as they can occur multiple times
+-- due to time-travel
+data BlockContent = BC { bcps :: MultiSet Player, bcos :: MultiSet PhyObj, bcenv :: EnvObj }
   deriving (Eq,Ord)
 ;
 
+newtype BC_Cons = BCC BlockContent
+  deriving (Ord,Eq)
+-- OneP Player | OneO PhyObj | Bgrd EnvObj
+-- => e.g. OneP p1 & OneP p1 & OneP p2 & Bgrd (Door 0 0) <=>
+-- BSCons MultiSet(p1,p1,p2) + Door 0 0 ==> ".P1. .P1. .P2. D00"
+;
+
+data BCT_Cons =
+  BCTC {
+    bctcInit :: Maybe EnvObj
+   ,bctcEnd  :: Maybe EnvObj
+   ,bctcFutrP :: MultiSet Player
+   ,bctcFutrO :: MultiSet PhyObj
+   ,bctcPastP :: MultiSet Player
+   ,bctcPastO :: MultiSet PhyObj
+} deriving (Eq,Ord)
+
 data BlockContentT = BCT {
-    bctenvs :: (EnvObj,EnvObj,Maybe Dir) -- old env, new env, transition direction of a moving block, if relevant. only a single moving block may be relevant per grid-block
-   ,bctos   :: (S.Set (PhyCOT,PhyObj)) -- object motion
-   ,bctps   :: (S.Set (PlayerActionT,Player))  -- player actions+motion
+    bctenv  :: (EnvObj,EnvT,EnvObj) -- old env, environment change, new env (possibly same)
+   ,bctos   :: M.Map PhyObj (MultiSet PhyObjT) -- object motion. since objects can be multiple, each object is identified with a multiset of motions
+   ,bctps   :: M.Map Player (MultiSet PlayerT) -- player actions+motion
   }
   deriving (Eq,Ord)
-  
+;
+
+{-
+IMPORTANT CONDITIONS:
+An unknown BlockContent has to be uniquely determinable from
+fully known neighboring BlockContentTs and distant blocks it interferes with (e.g. jump or teleport).
+same holds for BlockContentT.
+=> using explicit constraints. BC_Cons and BCT_Cons
+-}
+
 -- Specific BlockContent and Specific ClosedObs
 -- as well as Specific BlockContent (for open eyes view)
 -- and Specific (Pos,BlockContent) (with a single map entry) (for closed eyes)
@@ -71,8 +91,7 @@ reduceToClosed spo@(Specific _ player _ mp) = spo {sobservations = (pos, mp M.! 
 -- the player should have their eyes closed.
 reduceToClosedT :: OpenObsT -> ClosedObsT
 reduceToClosedT (Specific _ player _ mp) =
-  M.filter (any (eqById player . snd) . bctps) mp
-  
+  M.filter (any (eqById player) . M.keys . bctps) mp
   -- get all block-observations, where player is identified
 ;
 
@@ -108,11 +127,14 @@ data Specific a =
     ,splayer :: Player
     ,ssize :: Pos
     ,sobservations :: a
-  } -- using identifier for the player: product of name and age of the player is uniquely determining
+  } -- beware. a player is not uniquely identified. multiple indistinguishable players might have the same view. but that'^s okay, because their observations will be identical as well.
  deriving (Eq, Ord, Functor)
 ;
 
-data PhyCOT = NoMotionT | MotionT Dir Dir
+data PhyObjT = NoMotionT | MotionT Dir Dir
+  | LandFrom Dir -- land from throws. Dir is L, R or U
+  | IntoInventory {- also counting Door or switch -}
+  | OntoGround {- also from switch or door -}
   | TParrive Char | TPexit Char
   | TPsend | TPget
   -- when objects lying on ground are sent though tp.
@@ -139,15 +161,20 @@ data EnvObj = Door { needs :: Int, has :: Int } {- # keys needed, # keys inside.
   | Platform -- platform below current block
   | Blank
   | Switch { active :: Bool }  {- isActive -}
-  | MovingBlock {
+ {- | MovingBlock {
       mbDir :: Dir,
       mbMaxT :: Int,
       mbCurrT :: Int, -- both timers have to be <=99
       mcBehind :: EnvObj
-    }
+    } -}
   deriving (Eq, Ord)
 ;
-data PlayerActionTotal =
+
+data EnvT = EnvStays | EnvUsedOnce EAOnce | EnvUsedMult [EARep]
+  deriving (Eq,Ord)
+
+
+data PlayerTotal =
   PAT { eyesClosedBeg :: Bool -- True, if the eyes are closed in the beginning
         ,anticipationBeg :: Anticipation -- player can anticipate anything. though only their observations count
         ,phyAction :: PlayerAction
@@ -181,7 +208,7 @@ data PlayerAction =
   -- e.g. insert key and enter the door
   | Teleport {
      tpch :: Char
-    ,tpobjs :: (S.Set Player, S.Set PhyObj) -- teleorbs of channel at source/dest. are not sent
+    ,tpobjs :: (MultiSet Player, MultiSet PhyObj) -- teleorbs of channel at source/dest. are not sent
     ,tpdesttime :: Int -- at finish of arrival. in case of normal space-tp: currTime+1
   }
   deriving (Eq,Ord)
@@ -195,7 +222,7 @@ runpa :: a -> a ->
          (Char -> a) ->
          (EAOnce -> a) ->
          ([EARep] -> a) ->
-         (Char -> (S.Set Player,S.Set PhyObj) -> Int -> a) ->
+         (Char -> (MultiSet Player,MultiSet PhyObj) -> Int -> a) ->
          PlayerAction -> a
 runpa ml mr ju jul jur na pk pt tl tr newto ueo uem tele pa =
   case pa of MoveL -> ml
@@ -227,7 +254,7 @@ data EARep = TraverseDoor
 -- in addition to player actions,
 -- during transition one can observe a few more things
 -- in additions to the normals commands. they are complemented here
-data PlayerActionT =
+data PlayerT =
   Initiated PlayerAction
   -- | Intermediate PlayerAction -- e.g. MoveR for finish moving to right (before falling down now). obsolete due to Motion
   | Motion Dir Dir -- incoming and outgoing motion. e.g. move-away or jump.
@@ -242,7 +269,7 @@ runpat :: (PlayerAction -> a) ->
           (Dir -> Dir ->   a) ->
           (PlayerAction -> a) ->
           a ->
-          PlayerActionT ->
+          PlayerT ->
           a
 runpat _init mot compl complf pat = 
   case pat of

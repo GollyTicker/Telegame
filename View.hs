@@ -8,6 +8,8 @@ import Base
 import Data.List (intercalate,transpose)
 import qualified Data.Map as M
 import qualified Data.Set as S
+import Data.MultiSet (MultiSet)
+import qualified Data.MultiSet as MS
 import Data.Text (split,pack,unpack)
 
 instance Show EnvObj where
@@ -16,11 +18,11 @@ instance Show EnvObj where
   show Blank = ""
   show Platform = "_"
   show (Switch b) = "sw"++show (toEnum . fromEnum $ b :: Int)
-  show (MovingBlock dir tm tc behind) =
+{-show (MovingBlock dir tm tc behind) =
     "m"++show dir++show0padded tm++show0padded tc++show behind
     where show0padded n
             | n <= 9 = '0':show n
-            | otherwise = show n
+            | otherwise = show n -}
 ;
 
 padspaces :: [[String]] -> [[String]]
@@ -29,11 +31,11 @@ padspaces xss =
       f txs x = replicate (n txs - length x) ' ' ++ x
   in  transpose $ map (\txs -> map (f txs) txs) (transpose xss)
 
-toStrings:: Show a => S.Set a -> [String]
-toStrings = map show . S.elems
+toStrings:: Show a => MultiSet a -> [String]
+toStrings = map show . MS.elems
 
-toStringTpl :: (Show a, Show b) => S.Set (a,b) -> [String]
-toStringTpl = map (\(a,b) -> show a ++ " " ++ show b) . S.elems
+toStringMultiMap :: (Show a, Show b) => String -> M.Map a (MultiSet b) -> [String]
+toStringMultiMap z = map (\(x,ms) -> intercalate z $ map (\y -> show y ++ " " ++ show x) $ MS.toAscList ms) . M.toAscList
 
 instance Show BlockContent where
   show (BC ps os e) = 
@@ -44,15 +46,19 @@ instance Show BlockContent where
     in  finalStr
 ;
 
+-- TODO: explicit instances.
+deriving instance Show BC_Cons
+deriving instance Show BCT_Cons
+deriving instance Show EnvT
 
 instance Show BlockContentT where
-  show (BCT (env1,env2,mdir) pts ots) =
-    let firstHalf = intercalate "|" $ toStringTpl pts ++ toStringTpl ots
-        noChangeEnv = env1 == env2 && mdir == Nothing
+  show (BCT (env1,envt,env2) pts ots) =
+    let firstHalf = intercalate "|" $ toStringMultiMap "|" pts ++ toStringMultiMap "|" ots
+        noChangeEnv = env1 == env2 && envt == EnvStays
         padTo n str = replicate (n - length str) ' ' ++ str
         envStr | noChangeEnv = show env1
-               | otherwise   = concat ["[",padTo 1 $ show env1,"] -",maybe "" show mdir,"> [",padTo 1 $ show env2,"]"]
-        finalStr = if noChangeEnv || null firstHalf
+               | otherwise   = concat ["[",padTo 1 $ show env1,"] -",show envt,"> [",padTo 1 $ show env2,"]"]
+        finalStr = if null envStr || null firstHalf
                 then firstHalf ++ envStr
                 else firstHalf ++ " " ++ envStr
     in  finalStr
@@ -70,18 +76,21 @@ instance Show PlayerAction where
             concat ["tp[",show ch,",",show t,"](",
                         intercalate " " $ toStrings ps ++ toStrings os,")"])
 
-instance Show PlayerActionT where
+instance Show PlayerT where
   show = runpat (("Init "++). show) -- (("Inter "++). show)
                 (\x y -> concat [show (invDir x)," then ",show y])
                 (("Cmpl "++). show) "CmplFall "
 ;
-instance Show PhyCOT where
+instance Show PhyObjT where
   show NoMotionT = "stay"
   show (MotionT inc out) = show (invDir inc) ++ " then " ++ show out
   show (TParrive c) = "tpv("++show c++")"
   show (TPexit c) = "tp^("++show c++")"
   show TPsend = "tpx^"
   show TPget = "tpxv"
+  show (LandFrom dir) = "\\"++show dir++"/"
+  show IntoInventory = "(^)"
+  show OntoGround    = "(v)"
 ;
 instance Show Dir where
   show = rundir "<" "^" ">" "v"
@@ -150,9 +159,9 @@ indent n str = concat . map f . map (:[]) $ "\n"++str
         f s    = s
 
 instance Show Player where -- added . at beginning and end for easier parsing
-  show (Player s age o inv) = "." ++ f (s ++ show age) ++ invStr ++ "."
-    where invStr | S.null inv = ""
-                 | otherwise  = "("++(intercalate "+" . map show . S.toList $ inv)++")"
+  show (Player s {-age-} o inv) = "." ++ f (s {- ++ show age -}) ++ invStr ++ "."
+    where invStr | MS.null inv = ""
+                 | otherwise  = "("++(intercalate "+" . map show . MS.toAscList $ inv)++")"
           f x = if not o then "<"++x++">" else x
 
 instance Show PhyObj where
@@ -166,12 +175,12 @@ instance Read Player where
         let s = init s'
             opened = head s /= '<'
             inv 
-              | length (filter (=='(') s) > 0 = S.fromList . map (read . unpack) . split (=='+') . pack . reverse . tail . reverse . tail . dropWhile (/='(') $ s
-              | otherwise = S.empty
+              | length (filter (=='(') s) > 0 = MS.fromList . map (read . unpack) . split (=='+') . pack . reverse . tail . reverse . tail . dropWhile (/='(') $ s
+              | otherwise = MS.empty
             nameAgeStr = filter (\x -> notElem x "<>") . takeWhile (/='(') $ s
-            ageStr = takeWhile (\x -> elem x "0123456789") . reverse $ nameAgeStr
-            name = take (length nameAgeStr - length ageStr) nameAgeStr
-        in  [(Player name (read ageStr) opened inv,"")]
+            -- ageStr = takeWhile (\x -> elem x "0123456789") . reverse $ nameAgeStr
+            name = nameAgeStr -- take (length nameAgeStr - length ageStr) nameAgeStr
+        in  [(Player name {-(read ageStr)-} opened inv,"")]
     else []
   readsPrec _ _ = []
 
@@ -197,13 +206,13 @@ instance Read EnvObj where
   readsPrec _ ['D',n,h] = [(Door (read (n:"")) (read (h:"")),"")]
   readsPrec _ "sw0" = [(Switch False,"")]
   readsPrec _ "sw1" = [(Switch True,"")]
-  readsPrec _ ('m':dir:tm2:tm1:tc2:tc1:rest) =
-    [(MovingBlock (read (dir:"")) (read (tm2:tm1:"")) (read (tc2:tc1:"")) (read rest),"")]
+{-readsPrec _ ('m':dir:tm2:tm1:tc2:tc1:rest) =
+    [(MovingBlock (read (dir:"")) (read (tm2:tm1:"")) (read (tc2:tc1:"")) (read rest),"")] -}
   readsPrec _ _str = [] -- error $ "readEnv: Could not parse " ++ xs
 
 
 instance Read BlockContent where
-  readsPrec _ "" = [(BC S.empty S.empty Blank,"")]
+  readsPrec _ "" = [(BC MS.empty MS.empty Blank,"")]
   readsPrec n str =
     let ws = words str
         e = case safeLast ws of
@@ -211,8 +220,8 @@ instance Read BlockContent where
                 Just rws -> case readsPrec n rws of
                           [] -> Blank
                           ((env,_):_) -> env
-        ps = S.fromList . map fst . concatMap (readsPrec n) $ ws
-        os = S.fromList . map fst . concatMap (readsPrec n) $ ws
+        ps = MS.fromList . map fst . concatMap (readsPrec n) $ ws
+        os = MS.fromList . map fst . concatMap (readsPrec n) $ ws
     in  [(BC ps os e,"")]
 ;
 
@@ -233,7 +242,7 @@ instance Show GameState where -- TODO: show spacetime. cons history
     of Left e -> "GameState invalid due to: " ++ e
        Right x -> x
     where f str t (pws,pwts) =
-            str ++ "\n  ======= t = " ++ show t ++ " ======= \n\
+            str ++ "\n\n  ======= t = " ++ show t ++ " ======= \n\
             \    Player Worlds:" ++ indent 6 (showSet pws)
-            ++ "\n    PlayerWorlds during transition to next time-step:\n"
+            ++ "\n    PlayerWorlds during transition to next time-step:"
             ++ indent 6 (showSet pwts)
