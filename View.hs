@@ -64,6 +64,13 @@ instance Show BlockContentT where
     in  finalStr
 ;
 
+instance {-# Overlapping #-} Show (Maybe BlockContent) where
+  show = maybe "*" show
+;
+instance {-# Overlapping #-} Show (Maybe BlockContentT) where -- more compact view of a Field-element
+  show = maybe "*" show
+;
+
 dot :: (c -> d) -> (a -> b -> c) -> a -> b -> d
 dot f g = \x y -> f (g x y)
 
@@ -109,52 +116,64 @@ deriving instance Show EARep
 deriving instance Show EAOnce
 
 show2DMap :: Show a => Space a -> Pos -> String
-show2DMap mp (sx,sy) = "  " ++
-  (intercalate "\n  "
+show2DMap mp (sx,sy) =
+  intercalate "\n"
     $ map (intercalate ",")
     $ padspaces
     $ map (\y -> map
                   (\x -> show $ mp M.!(x,y))
                   [0..sx])
-          ['A'..sy])
+          ['A'..sy]
 ;
 
-
-
+showPlayerUnknown2DMap :: Space BlockContentT -> Pos -> String
+showPlayerUnknown2DMap mp (sx,sy) =
+  intercalate "\n"
+    $ map (intercalate ",")
+    $ padspaces
+    $ map (\y -> map
+                  (\x -> maybe "?" show $ M.lookup (x,y) mp)
+                  [0..sx])
+          ['A'..sy]
+;
 
 instance Show PlayerWorld where
   show = showOpenObs
 
 instance Show PlayerWorldT where
-  show (Specific t p (sx,sy) bcmap) =
-    "View of transition"
-    ++ " of player "++ showCompactPlayer p
-    ++" at time "++show t++", mapsize "++show (sx,sy)++"\n"
-    ++ show2DMap bcmap (sx,sy)
+  show spo@(Specific t p sz bcmap) =
+    showCompactPlayer p ++ " ["
+    ++(if peyes p then "Opened eyes view" else "Closed eyes guess")
+    ++", t = "++show t++"->"++show(t+1)++"]\n"
+    ++ indent 2 (show2DMap bcmap sz)
+    ++ (if peyes p then "" else "\nwith " ++ showClosedObsT (reduceToClosedT spo))
 ;
+showClosedObsT :: ClosedObsT -> String
+showClosedObsT (Specific t p sz bcmap) =
+  showCompactPlayer p ++ " [Closed eyes view, t = "++show t++"]\n"
+  ++ indent 2 (showPlayerUnknown2DMap bcmap sz)
 
 -- show player without inventory
 showCompactPlayer :: Player -> String
-showCompactPlayer p = init . tail . takeWhile (/='(') $ show p
+showCompactPlayer p = takeWhile (/='(') . init . tail $ show p
 
 showOpenObs :: OpenObs -> String
 showOpenObs opbs@(Specific t p (sx,sy) bcmap) =
-  (if peyes p then "Opened eyes view" else "Closed eyes guess")
-  ++ " of player "++ showCompactPlayer p
-  ++" at time "++show t++", mapsize "++show (sx,sy)++"\n"
-  ++ show2DMap bcmap (sx,sy)
+  showCompactPlayer p ++ " ["
+  ++ (if peyes p then "Opened eyes view" else "Closed eyes guess")
+  ++", t = "++show t++"]\n"
+  ++ indent 2 (show2DMap bcmap (sx,sy))
   ++ (if peyes p then "" else "\nwith " ++ showClosedObs (reduceToClosed opbs))
-        -- maybe todo: mark current player
 ;
 showClosedObs :: ClosedObs -> String
 showClosedObs (Specific t p _ (pos,bc)) =
-  "Closed eyes view of player "++showCompactPlayer p
-  ++" at time "++show t++" at position "++show pos++"\n"
-  ++ show2DMap (M.singleton (0,'A') bc) (0,'A')
+  showCompactPlayer p ++ " [Closed eyes view"
+  ++" at "++show (t,pos)++"]\n"
+  ++ indent 2 (show2DMap (M.singleton (0,'A') bc) (0,'A'))
 ;
 
 indent :: Int -> String -> String
-indent n str = concat . map f . map (:[]) $ "\n"++str
+indent n str = tail $ concat . map f . map (:[]) $ "\n"++str
   where f "\n" = "\n" ++ replicate n ' '
         f s    = s
 
@@ -232,17 +251,33 @@ safeLast xs = Just $ last xs
 showSet :: Show a => S.Set a -> String
 showSet = intercalate "\n" . map show . S.toList
 
-instance Show GameState where -- TODO: show spacetime. cons history
-  show (GS s _ch) =
+instance Show ConsHistory where
+  show (CH m sz) = 
     case (
-      do minT <- maybeToEither "Empty history" . fmap (fst.fst) $ M.minViewWithKey s
-         maxT <- maybeToEither "Empty history" . fmap (fst.fst) $  M.maxViewWithKey s
-         return $ "GameState from t="++show minT++" to t=" ++ show maxT ++ ":"
-                ++ M.foldlWithKey' f "" s ++ "\n ====== end of history ========")
+      do minT <- maybeToEither "Empty history" . fmap (fst.fst) $ M.minViewWithKey m
+         maxT <- maybeToEither "Empty history" . fmap (fst.fst) $ M.maxViewWithKey m
+         return $ "History from t="++show minT++" to t=" ++ show maxT ++ " and spacetime-size = "++show sz++":"
+                ++ M.foldlWithKey' f "" m ++ "\n\n ====== end of history ========")
+    of Left e -> "History invalid due to: " ++ e
+       Right x -> x
+    where f str t sp =
+            str ++ "\n\n  ======= t = " ++ show t ++ " ======= \n"
+                ++     "    Static:\n" ++ indent 6 (show2DMap (fst <$> sp) (snd sz))
+            ++ "\n    And then:\n"
+            ++ indent 6 (show2DMap (snd <$> sp) (snd sz))
+
+instance Show GameState where
+  show (GS s ch) =
+    case (
+      do minT <- maybeToEither "No player observations" . fmap (fst.fst) $ M.minViewWithKey s
+         maxT <- maybeToEither "No player observations" . fmap (fst.fst) $  M.maxViewWithKey s
+         return $ "GameState. Player Observations from t="++show minT++" to t=" ++ show maxT ++ ":"
+                ++ M.foldlWithKey' f "" s ++ "\n\n ====== end of observations ========"
+                 ++ "\nwith " ++ show ch)
     of Left e -> "GameState invalid due to: " ++ e
        Right x -> x
     where f str t (pws,pwts) =
             str ++ "\n\n  ======= t = " ++ show t ++ " ======= \n\
-            \    Player Worlds:" ++ indent 6 (showSet pws)
-            ++ "\n    PlayerWorlds during transition to next time-step:"
+            \    Static observations:\n" ++ indent 6 (showSet pws)
+            ++ "\n    Then transition observations:\n"
             ++ indent 6 (showSet pwts)

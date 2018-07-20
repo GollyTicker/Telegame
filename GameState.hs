@@ -10,11 +10,13 @@ import qualified Data.Set as S
 import qualified Data.Map as M
 --import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MS
-import Data.Foldable({-instances-})
+-- import Data.Foldable
 -- import Data.Maybe (maybeToList)
 import Control.Monad (foldM)
 import Control.Arrow (first,(***))
 -- first: apply function on fst-element in tuple; f *** g = \(a,b) -> (f a,g b)
+
+-- import Debug.Trace
 
 mkGSfromObs :: TotalObservations -> MayFail GameState
 mkGSfromObs obs = fmap (GS obs) $ computeCHfromObs obs
@@ -23,14 +25,13 @@ mkGSfromObs obs = fmap (GS obs) $ computeCHfromObs obs
 initGS :: S.Set PlayerWorld -> MayFail GameState
 initGS pws = mkGSfromObs (M.singleton 0 (pws,S.empty))
 
--- TODO: define this function
 {-
 Assumptions:
 . there is at least one time-step with an observation
   where a non-empty mapsize is used
 -}
 computeCHfromObs :: TotalObservations -> MayFail ConsHistory
-computeCHfromObs obs =
+computeCHfromObs obs = 
   do  
     let initCH = defaultConsHistory (maxT,mapSize)
     applyAllObservations obs initCH
@@ -78,8 +79,6 @@ concrete such that every element is uniquely defined.
 -- applies each observation one after a time.
 -- halts at the firstcontradiction that occurred
 -- if everything is consistent, then a ConsHistory is returned
--- TODO: we have a teleportation in future, make sure to extend
--- the history with unknowns first.
 applyAllObservations :: Timed (S.Set PlayerWorld, S.Set PlayerWorldT) ->
                         ConsHistory -> MayFail ConsHistory
 applyAllObservations mp ch0 = foldlWithKeyM f ch0 mp
@@ -89,11 +88,11 @@ applyAllObservations mp ch0 = foldlWithKeyM f ch0 mp
                            foldM (applyPWT t) ch2 (S.toList pwts)
 ;
 
--- TODO: continue
 applyPW :: Int -> ConsHistory -> PlayerWorld -> MayFail ConsHistory
-applyPW t ch0 pw = applypwObs pw addOpenObs undefined
+applyPW t ch0 pw = applypwObs pw addOpenObs addClosedObs
   where
     addOpenObs = foldlWithKeyM (\pos bc -> addWhenConsistent (t,pos) bc) ch0 . sobservations
+    addClosedObs x = let (pos,bc) = sobservations x in addWhenConsistent (t,pos) bc ch0
     addWhenConsistent :: TimePos -> BlockContent -> ConsHistory -> MayFail ConsHistory
     addWhenConsistent tpos bc ch =
          (\x -> insertCH tpos x ch) <$>
@@ -111,7 +110,7 @@ failPlayObsContraHistory :: TimePos -> BlockContent -> BlockContent -> MayFail a
 failPlayObsContraHistory tpos bc bc' = failing $ "applyPW: players observation contradicts with established history at "++show tpos ++". observed: "++show bc ++ ", established: " ++ show bc'
 
 failPlayerObsOutOfBounds :: TimePos -> ConsHistory -> MayFail a
-failPlayerObsOutOfBounds tpos ch = failing $ "applyPW[unusual]: players observation "++show tpos++" is out-of-bounds in history. history size = "++ show (chsize ch)
+failPlayerObsOutOfBounds tpos ch = failing $ "applyPW[unusual]: players observation "++show tpos++" is out-of-bounds in history. history size = "++ show (chsize ch) ++ ", with ch:\n" ++ show ch
 
 
 -- TODO: consistency check can be made faster by memoizing
@@ -142,10 +141,10 @@ contradictions ch = {- we assume that out-of-bounds is a problem -}
 type ConditionsChecker = [(Time,Pos,(Maybe BlockContent -> String),(Maybe BlockContentT -> String))]
 
 interferesWith :: TimePos -> BlockContent -> ConditionsChecker
-interferesWith = undefined
+interferesWith _ _ = [] {- TODO: implement this -}
 
 interferesWithT :: TimePos -> BlockContentT -> ConditionsChecker
-interferesWithT = undefined
+interferesWithT _ _ = [] {- TODO: implement this -}
 
 runCondChecker :: TimePos -> ConditionsChecker -> ConsHistory -> [(TimePos,String)]
 runCondChecker tpos ts ch =
@@ -170,13 +169,13 @@ insertCH :: TimePos -> BlockContent -> ConsHistory -> ConsHistory
 insertCH (t,pos) bc ch = ch { chspace = M.adjust (M.adjust (first (const (Just bc))) pos) t (chspace ch)}
 
 applyPWT :: Int -> ConsHistory -> PlayerWorldT -> MayFail ConsHistory
-applyPWT _t _ch _pwt = failing "applyPWT not implemented"
+applyPWT _t _ch _pwt = success _ch -- TODO: implement applyPWT
 
 -- specializes all Unkowns to a unique history
 -- or fails with contradictions.
 -- this is called at the end of all inputs to check if the room is solved.
 concreteHistory :: ConsHistory -> MayFail ConsHistory
-concreteHistory = undefined
+concreteHistory _ = failing "TODO: implement concreteHistory"
 -- for this function, inferencability from interactions blocks is nesessary (see Base.hs)
 -- after everyhitn has been made concrete, another
 -- run of checks will be done to assure that the inserted elements
@@ -187,8 +186,7 @@ concreteHistory = undefined
 -- given a set of conditions to be satisfied,
 -- it searches for the simplest BlockContent that satisfies it.
 inferMinimal :: BC_Cons -> MayFail BlockContent
-inferMinimal = undefined
-
+inferMinimal _ = failing "TODO: implement inferMinimal"
 -- TODO: inferMinimalT
 
 foldlWithKeyM :: Monad m => (k -> a -> b -> m b) -> b -> M.Map k a -> m b
@@ -197,10 +195,10 @@ foldlWithKeyM f z = foldM (flip $ uncurry f) z . M.toAscList
 -- TEST: consHistory (initGS pws) == initConsHistory _size pws
 
 defaultConsHistory :: (Time,Pos) -> ConsHistory
-defaultConsHistory (t,p) =
+defaultConsHistory (tmax,pmax) =
   CH {
-     chspace = if t >= 0 then M.singleton 0 (default2DMap p (Nothing,Nothing)) else M.empty
-    ,chsize = (t,p)
+     chspace = M.fromList $ (\t -> (t,) $ default2DMap pmax (Nothing,Nothing) ) <$> [0..tmax]
+    ,chsize = (tmax,pmax)
   }
 
 default2DMap :: Pos -> a -> Space a

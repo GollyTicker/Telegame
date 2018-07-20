@@ -12,6 +12,15 @@ module Base
 Main todo:
 . implement game state tansition function
 . clean up and tidy and refactor
+. make web.interface. What to use?
+  -> web-interface with Elm and interoperate with Haskell
+    on server-side?
+    -> using example https://github.com/haskell-servant/example-servant-elm
+      -> use stack setup, stack build, etc... perhaps admin-privileges
+
+versions and packages:
+Haskell Platform Core. 8.4.3
+package multiset (version 0.3.4)
 -}
 
 import qualified Data.Set as S
@@ -50,10 +59,10 @@ data BCT_Cons =
   BCTC {
     bctcInit :: Maybe EnvObj
    ,bctcEnd  :: Maybe EnvObj
-   ,bctcFutrP :: MultiSet Player
-   ,bctcFutrO :: MultiSet PhyObj
-   ,bctcPastP :: MultiSet Player
-   ,bctcPastO :: MultiSet PhyObj
+   ,bctcToFutrP :: MultiSet Player
+   ,bctcToFutrO :: MultiSet PhyObj
+   ,bctcFromPastP :: MultiSet Player
+   ,bctcFromPastO :: MultiSet PhyObj
 } deriving (Eq,Ord)
 
 data BlockContentT = BCT {
@@ -83,15 +92,15 @@ type ClosedObs = Specific (Pos,BlockContent)
 -- should be called on a player, that exists in ObenObs and whose eyes are closed.
 reduceToClosed :: OpenObs -> ClosedObs
 reduceToClosed spo@(Specific _ player _ mp) = spo {sobservations = (pos, mp M.! pos)}
-  where xs = M.filter (any (eqById player) . bcps) $ mp
+  where xs = M.filter (any (player==) . bcps) $ mp
         pos = case (M.toList xs) of ((p,_):_) -> p ; [] -> error "reduceToClosed: Player not found"
 
 -- analogous to above, just during transition.
 -- the player is identified and their movements are traced to give the closed eyes observations.
 -- the player should have their eyes closed.
 reduceToClosedT :: OpenObsT -> ClosedObsT
-reduceToClosedT (Specific _ player _ mp) =
-  M.filter (any (eqById player) . M.keys . bctps) mp
+reduceToClosedT spo@(Specific _ plyr _ mp) =
+  spo { sobservations = M.filter (any (plyr==) . M.keys . bctps) mp}
   -- get all block-observations, where player is identified
 ;
 
@@ -116,7 +125,7 @@ type OpenObsT = Specific (Space BlockContentT)
 {- observation, if the eyes are closed during transition -}
 -- for an explanation: see Telegame workbook
 -- We thus only need to collect a list of observed blicks/fields.
-type ClosedObsT = Space BlockContentT
+type ClosedObsT = Specific (Space BlockContentT) -- == OpenObsT
 
 type Timed a = M.Map Time a
 type Space a = M.Map Pos a
@@ -306,7 +315,8 @@ type PlayerWorldT = OpenObsT
 applypwObs :: PlayerWorld -> (OpenObs -> a) -> (ClosedObs -> a) -> a
 applypwObs sobs fo fc = if peyes (splayer sobs) then fo sobs else fc (reduceToClosed sobs)
 
-
+applypwObsT :: PlayerWorldT -> (OpenObsT -> a) -> (ClosedObsT -> a) -> a
+applypwObsT sobs fo fc = if peyes (splayer sobs) then fo sobs else fc (reduceToClosedT sobs)
 
 type MayFail a = Either String a
 

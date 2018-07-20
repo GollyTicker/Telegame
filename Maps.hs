@@ -10,23 +10,22 @@ import GameState
 import qualified Data.Set as S
 import qualified Data.Map as M
 import qualified Data.MultiSet as MS
-import Control.Monad
 
 mkP :: {-Int ->-} Bool -> Player
 mkP {-i-} eo = Player "P" {-i-} eo MS.empty
 
+mkPwith :: Bool -> [PhyObj] -> Player
+mkPwith eo ls = Player "P" eo (MS.fromList ls)
+
 one (act,p) = M.singleton p (MS.singleton act)
 
-fmap2 :: (Functor f, Functor g) => (a -> b) -> f (g a) -> f (g b)
-fmap2 h = fmap (fmap h)
-
-noAction :: BlockContent -> BlockContentT
-noAction (BC ps os env) =
-  BCT {
-     bctenv = (env,EnvStays,env)
-    ,bctos = M.fromListWith MS.union $ map (,MS.singleton NoMotionT) $ MS.toList os
-    ,bctps = M.fromListWith MS.union $ map (,MS.singleton (Completed NoAction)) $ MS.toList ps
-  }
+noAction :: (Functor f, Functor g) => f (g BlockContent) -> f (g BlockContentT)
+noAction = fmap (fmap f)
+  where f (BC ps os env) = BCT {
+       bctenv = (env,EnvStays,env)
+      ,bctos = M.fromListWith MS.union $ map (,MS.singleton NoMotionT) $ MS.toList os
+      ,bctps = M.fromListWith MS.union $ map (,MS.singleton (Completed NoAction)) $ MS.toList ps
+    }
 ;
 
 map1_P0 = Specific 0 (mkP True) (7,'D') $ fromString
@@ -36,7 +35,7 @@ map1_P0 = Specific 0 (mkP True) (7,'D') $ fromString
     \  S,S,S,S,S,      S,   S,S"
 ;
 
-map1_P1 = Specific 1 (mkP False) (7,'D') $ fromString
+map1_P1 = Specific 1 (mkPwith False [Key]) (7,'D') $ fromString
     " , ,_, , , , .<P>(k). tx0 tx1 D00, \n\
     \S, , , , , S,   S,S\n\
     \S,S, , , , S,   S,S\n\
@@ -52,7 +51,7 @@ map2_P0_t0T =
   fmap (M.insert (0,'A')   $ BCT (Blank,EnvStays,Blank) M.empty (one . (Initiated    MoveR,) $ mkP True))
   . fmap (M.insert (1,'A') $ BCT (Blank,EnvStays,Blank) M.empty (one . (Motion L D        ,) $ mkP True))
   . fmap (M.insert (1,'B') $ BCT (Blank,EnvStays,Blank) M.empty (one . (CompletedFalling  ,) $ mkP True))
-  . fmap2 noAction $ map2_P0_t0
+  $ noAction map2_P0_t0
 
 map2_P0_t1 = Specific 1 (mkP True) (7,'D') $ fromString
     " ,   ,tx1 _, , ,tx0, D00, \n\
@@ -65,7 +64,7 @@ map2_P0_t1T =
   fmap (M.insert (1,'B')   $ BCT (Blank,EnvStays,Blank) M.empty  (one (Initiated  JumpUR,mkP True)))
   . fmap (M.insert (1,'A') $ BCT (Blank,EnvStays,Blank) M.empty  (one (Motion D R       ,mkP True)))
   . fmap (M.insert (2,'A') $ BCT (Platform,EnvStays,Platform) (one (NoMotionT,TOrb 'x' 1)) (one (Completed  JumpUR,mkP True)))
-  . fmap2 noAction $ map2_P0_t1
+  $ noAction map2_P0_t1
 
 map2_P0_t2 = Specific 2 (mkP True) (7,'D') $ fromString
     " , ,.P. tx1 _, , ,tx0, D00, \n\
@@ -78,7 +77,7 @@ mytp = Teleport {tpch = 'x', tpobjs = (MS.singleton (mkP True),MS.empty), tpdest
 map2_P0_t2T = 
   fmap (M.insert (2,'A')   $ BCT (Platform,EnvStays,Platform) (one (TPsend,TOrb 'x' 1))  (one (Initiated  mytp,mkP True)))
   . fmap (M.insert (5,'A') $ BCT (Blank,EnvStays,Blank)       (one (TPget,TOrb 'x' 0)) (one (Completed  mytp,mkP True)))
-  . fmap2 noAction $ map2_P0_t2
+  $ noAction map2_P0_t2
 
 map2_P0_t3 = Specific 3 (mkP True) (7,'D') $ fromString
     " , ,_, , ,.P., D00, \n\
@@ -89,10 +88,10 @@ map2_P0_t3 = Specific 3 (mkP True) (7,'D') $ fromString
 map2_P0_t3T =
   fmap (M.insert (6,'A')   $ BCT (Blank,EnvStays,Blank) M.empty (one (Initiated MoveR,mkP True)))
   . fmap (M.insert (7,'A') $ BCT (Door 0 0,EnvStays,Door 0 0) M.empty (one (Completed MoveR,mkP True)))
-  . fmap2 noAction $ map2_P0_t3
+  $ noAction map2_P0_t3
 
 map2_P0_t4 = Specific 4 (mkP True) (7,'D') $ fromString
-    " , ,_, , , ,.P. D00, \n\
+    " , ,_, , , ,.<P>. D00, \n\
     \S, , , , ,S,      S,S\n\
     \S,S, , , ,S,      S,S\n\
     \S,S,S,S,S,S,      S,S"
@@ -100,7 +99,7 @@ map2_P0_t4 = Specific 4 (mkP True) (7,'D') $ fromString
 
 map2_P0_t4T =
   fmap (M.insert (6,'A') $ BCT (Door 0 0,EnvStays,Door 0 0) M.empty (one (Completed (UseEnvMult [TraverseDoor]),mkP True)))
-  . fmap2 noAction $ map2_P0_t4
+  $ noAction map2_P0_t4
 
 map2_initGS :: GameState
 map2_initGS = either (error . ("map2_initGS: "++)) id $ initGS (S.singleton map2_P0_t0)
@@ -114,11 +113,15 @@ map2_GS =
              (3,(f map2_P0_t3,f map2_P0_t3T)),
              (4,(f map2_P0_t4,f map2_P0_t4T))])
       f = S.singleton
-  in  GS obs $ undefined -- computeCHfromObs obs
+  in  either (error . ("map2_GS: "++)) id $ GS obs <$> computeCHfromObs obs
 
 
 main = do
-  mapM_ (print >=> const (putStrLn "")) $ [map1_P0, map1_P1]
-  putStrLn "Initial Gamestate:"
-  print map2_GS
+  putStrLn "Some Open/Closed Observations:"
+  print map1_P0 >> putChar '\n'
+  print map1_P1 >> putChar '\n'
+  print (noAction map1_P0)>> putChar '\n'
+  print (noAction map1_P1)>> putChar '\n'
+  -- putStrLn "\n\nInitial GameState:" >> print map2_GS
+  -- putStrLn "Minimal GameState:" >> print map2_initGS
 ;
