@@ -51,7 +51,7 @@ computeCHfromObs obs =
         maxPerTime (_,pwts) = maximum' $ S.map maxPerSpace pwts
         maxPerSpace = maximum' . M.map blockContent . sobservations
         blockContent :: BlockContentT -> Int
-        blockContent = maximum' . MS.map (\(_,act,_) -> maxDestTimePT act) . bctps
+        blockContent = maximum' . MS.map (maxDestTimePT . snd3) . bctps
         maxDestTimePT pat =
           runpat maxDestTimePA (\_ _ -> -1) maxDestTimePA (-1) pat
         maxDestTimePA (Teleport _ _ t) = t
@@ -95,7 +95,7 @@ applyPW t ch0 pw = applypwObs pw addOpenObs addClosedObs
     addOpenObs = foldlWithKeyM (\pos bc -> addWhenConsistent (t,pos) bc) ch0 . sobservations
     addClosedObs x = let (pos,bc) = sobservations x in addWhenConsistent (t,pos) bc ch0
     addWhenConsistent :: TimePos -> BlockContent -> ConsHistory -> MayFail ConsHistory
-    addWhenConsistent tpos bc ch =
+    addWhenConsistent tpos bc ch = {- check blockcontent(T) player-observation for self-consistency. though this should not happen in the first place -}
          (\x -> insertCH tpos x ch) <$>
            atCH tpos (failPlayerObsOutOfBounds tpos ch)
                 (maybe (success bc) (\bc' -> if bc == bc' then success bc else failPlayObsContraHistory tpos bc bc'))
@@ -117,28 +117,39 @@ failPlayerObsOutOfBounds tpos ch = failing $ "applyPW[unusual]: players observat
 -- TODO: consistency check can be made faster by memoizing
 -- the bidirectional-dependencies. similarities to arc-consistency algo. for Constraint Solving Networks
 
--- returns the set of contradiction descriptions currently in the ConsHistory.
-contradictions :: ConsHistory -> [(TimePos,String)]
-contradictions ch = {- we assume that out-of-bounds is a problem -}
+
+-- returns the set of contradiction descriptions currently in the ConsHistory
+contradictions :: ConsHistory -> [CondRes]
+contradictions ch = {- we assume that out-of-bounds is a problem. -}
   do let (maxT,(maxX,maxY)) = chsize ch
      t <- [0..maxT]
      x <- [0..maxX]
      y <- ['A'..maxY]
      let curr = (t,(x,y))
-         checkbc  = maybe [] (\bc  -> runCondChecker curr (interferesWith  curr bc ) ch)
-         checkbct = maybe [] (\bct -> runCondChecker curr (interferesWithT curr bct) ch)
-     uncurry (++) $ atCHboth curr [(curr,"out-of-bounds")] checkbc checkbct ch
+         checkbc  = maybe []{- unknowns ok -} (\bc  -> runChecks curr bc ch)
+         checkbct = maybe []{- unknowns ok -} (\bct -> runChecks curr bct ch)
+     uncurry (++) $ atCHboth curr ["block(T) "++show curr++" out-of-bounds"] checkbc checkbct ch
 ;
 
-runCondChecker :: TimePos -> ConditionsChecker -> ConsHistory -> [(TimePos,String)]
-runCondChecker tpos ts ch =
-  concat [ g chk ++ g chkT | (t',pos',f,ft) <- ts,
-              let (chk,chkT) = atCHboth (t',pos') (listFailReferenceOutOfBounds (t',pos')) f ft ch
-                  g x = if null x then [] else [(tpos,x)] ]
+{- MAIN FUNCTION: runChecks (from Block class) -}
+runChecks :: Block b => TimePos -> b -> ConsHistory -> [CondRes]
+runChecks curr b ch =
+  let missing = findMissingIndices (ccneeds cc) ch
+      cc = interferesWithBlock curr b
+  in  filter isContradiction $ selfconsistent b : 
+        if S.null missing
+          then ccrun cc (flatten (chspace ch))
+          else map (listFailReferenceOutOfBounds curr) . S.toList $ missing
 ;
 
-listFailReferenceOutOfBounds :: TimePos -> String
-listFailReferenceOutOfBounds other = "referenced block "++show other++" is out-of-bounds for consistency check"
+flatten :: Timed (Space a) -> M.Map TimePos a
+flatten mp = M.fromAscList (M.toAscList mp >>= \(t,mpi) -> M.toAscList mpi >>= \(pos,x) -> [((t,pos),x)])
+
+findMissingIndices :: S.Set TimePos -> ConsHistory -> S.Set TimePos
+findMissingIndices ks = (ks S.\\) . M.keysSet . flatten . chspace
+
+listFailReferenceOutOfBounds :: TimePos -> TimePos -> CondRes
+listFailReferenceOutOfBounds curr other = show curr ++ " references out-of-bounds "++show other
 
 atCH :: TimePos -> a {- out of bounds -} -> (Maybe BlockContent -> a) -> ConsHistory -> a
 atCH tpos z f = fst . atCHboth tpos z f (const (error "atCH: this cannot happen"))
@@ -155,6 +166,7 @@ insertCH (t,pos) bc ch = ch { chspace = M.adjust (M.adjust (first (const (Just b
 applyPWT :: Int -> ConsHistory -> PlayerWorldT -> MayFail ConsHistory
 applyPWT _t _ch _pwt = success _ch -- TODO: implement applyPWT
 
+{- MAIN FUNCTION: concreteHistory. should use runCondChecker -}
 -- specializes all Unkowns to a unique history
 -- or fails with contradictions.
 -- this is called at the end of all inputs to check if the room is solved.

@@ -4,7 +4,6 @@
 module View where
 
 import Base
--- import GameState
 import Data.List (intercalate,transpose)
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -34,6 +33,9 @@ padspaces xss =
 toStrings:: Show a => MultiSet a -> [String]
 toStrings = map show . MS.elems
 
+instance {-# Overlapping #-} Show TimePos where
+  show (t,pos) = "[t = " ++ show t ++ ", pos = " ++ show pos ++ "]"
+  
 -- enclosing encloses each string in the list of strings
 -- with z and z' and then joins with the results
 enclosing :: String -> String -> [String] -> String

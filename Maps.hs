@@ -124,6 +124,12 @@ main = do
   print (noAction map1_P0)>> putChar '\n'
   print (noAction map1_P1)>> putChar '\n'
   putChar '\n'
-  putStrLn "\n\nInitial GameState:" >> print map2_GS
+  
+  putStrLn "\n\nInitial GameState:"
+  print map2_GS
+  
+  putStrLn "\nWith Contradictions:"
+  mapM_ putStrLn . contradictions $ gsch map2_GS
+  
   -- putStrLn "Minimal GameState:" >> print map2_initGS
 ;

@@ -78,6 +78,12 @@ data BlockContentT = BCT {
   }
   deriving (Eq,Ord)
 ;
+fst3 :: (a,b,c) -> a
+fst3 (a,_,_) = a
+snd3 :: (a,b,c) -> b
+snd3 (_,b,_) = b
+thd3 :: (a,b,c) -> c
+thd3 (_,_,c) = c
 
 {-
 IMPORTANT CONDITIONS:
@@ -171,7 +177,7 @@ data PhyObj = TOrb Char Int {- identifier, int is 0 or 1 -}
             | Key
   deriving (Ord,Eq)
 
-data EnvObj = Door { needs :: Int, has :: Int } {- # keys needed, # keys inside. both have to be <=9 -}
+data EnvObj = Door { dneeds :: Int, dhas :: Int } {- # keys needed, # keys inside. both have to be <=9 -}
   | Solid
   | Platform -- platform below current block
   | Blank
