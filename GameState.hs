@@ -5,6 +5,7 @@ module GameState
   where
 
 import Base
+import Data.Proxy
 import Interference
 import View() -- Show instances for error messages
 import qualified Data.Set as S
@@ -23,7 +24,7 @@ mkGSfromObs :: TotalObservations -> MayFail GameState
 mkGSfromObs obs = fmap (GS obs) $ computeCHfromObs obs
   
 -- creates initial gamestate from an initial set of player worlds
-initGS :: S.Set PlayerWorld -> MayFail GameState
+initGS :: S.Set (PWorld BlockSt) -> MayFail GameState
 initGS pws = mkGSfromObs (M.singleton 0 (pws,S.empty))
 
 {-
@@ -50,7 +51,7 @@ computeCHfromObs obs =
         maxTeletime = maximum' $ M.map maxPerTime obs
         maxPerTime (_,pwts) = maximum' $ S.map maxPerSpace pwts
         maxPerSpace = maximum' . M.map blockContent . sobservations
-        blockContent :: BlockContentT -> Int
+        blockContent :: BlockTr -> Int
         blockContent = maximum' . MS.map (maxDestTimePT . snd3) . bctps
         maxDestTimePT pat =
           runpat maxDestTimePA (\_ _ -> -1) maxDestTimePA (-1) pat
@@ -80,21 +81,21 @@ concrete such that every element is uniquely defined.
 -- applies each observation one after a time.
 -- halts at the firstcontradiction that occurred
 -- if everything is consistent, then a ConsHistory is returned
-applyAllObservations :: Timed (S.Set PlayerWorld, S.Set PlayerWorldT) ->
+applyAllObservations :: TotalObservations ->
                         ConsHistory -> MayFail ConsHistory
 applyAllObservations mp ch0 = foldlWithKeyM f ch0 mp
   where
-    f :: Time -> (S.Set PlayerWorld, S.Set PlayerWorldT) -> ConsHistory -> MayFail ConsHistory
+    f :: Time -> (S.Set (PWorld BlockSt), S.Set (PWorld BlockTr)) -> ConsHistory -> MayFail ConsHistory
     f t (pws,pwts) ch = do ch2 <- foldM (applyPW  t) ch  (S.toList pws )
                            foldM (applyPWT t) ch2 (S.toList pwts)
 ;
 
-applyPW :: Int -> ConsHistory -> PlayerWorld -> MayFail ConsHistory
-applyPW t ch0 pw = applypwObs pw addOpenObs addClosedObs
+applyPW :: Int -> ConsHistory -> PWorld BlockSt -> MayFail ConsHistory
+applyPW t ch0 pw = applypwObs (Proxy::Proxy BlockSt) pw addOpenObs addClosedObs
   where
     addOpenObs = foldlWithKeyM (\pos bc -> addWhenConsistent (t,pos) bc) ch0 . sobservations
     addClosedObs x = let (pos,bc) = sobservations x in addWhenConsistent (t,pos) bc ch0
-    addWhenConsistent :: TimePos -> BlockContent -> ConsHistory -> MayFail ConsHistory
+    addWhenConsistent :: TimePos -> BlockSt -> ConsHistory -> MayFail ConsHistory
     addWhenConsistent tpos bc ch = {- check blockcontent(T) player-observation for self-consistency. though this should not happen in the first place -}
          (\x -> insertCH tpos x ch) <$>
            atCH tpos (failPlayerObsOutOfBounds tpos ch)
@@ -107,7 +108,7 @@ applyPW t ch0 pw = applypwObs pw addOpenObs addClosedObs
   -- the network stays consistent after adding it.
 ;
 
-failPlayObsContraHistory :: TimePos -> BlockContent -> BlockContent -> MayFail a
+failPlayObsContraHistory :: TimePos -> BlockSt -> BlockSt -> MayFail a
 failPlayObsContraHistory tpos bc bc' = failing $ "applyPW: players observation contradicts with established history at "++show tpos ++". observed: "++show bc ++ ", established: " ++ show bc'
 
 failPlayerObsOutOfBounds :: TimePos -> ConsHistory -> MayFail a
@@ -151,19 +152,19 @@ findMissingIndices ks = (ks S.\\) . M.keysSet . flatten . chspace
 listFailReferenceOutOfBounds :: TimePos -> TimePos -> CondRes
 listFailReferenceOutOfBounds curr other = show curr ++ " references out-of-bounds "++show other
 
-atCH :: TimePos -> a {- out of bounds -} -> (Maybe BlockContent -> a) -> ConsHistory -> a
+atCH :: TimePos -> a {- out of bounds -} -> (Maybe BlockSt -> a) -> ConsHistory -> a
 atCH tpos z f = fst . atCHboth tpos z f (const (error "atCH: this cannot happen"))
 
 -- combine two accesses into one
-atCHboth :: TimePos -> a {- out of bounds -} -> (Maybe BlockContent -> a) -> (Maybe BlockContentT -> a) -> ConsHistory -> (a,a)
+atCHboth :: TimePos -> a {- out of bounds -} -> (Maybe BlockSt -> a) -> (Maybe BlockTr -> a) -> ConsHistory -> (a,a)
 atCHboth (t,pos) z f g = maybe (z,z) (f *** g) . (>>= M.lookup pos) . M.lookup t . chspace
 
 -- inserts the blockContent into the cons-history.
 -- assumes, that time-pos is not out-of-bounds
-insertCH :: TimePos -> BlockContent -> ConsHistory -> ConsHistory
+insertCH :: TimePos -> BlockSt -> ConsHistory -> ConsHistory
 insertCH (t,pos) bc ch = ch { chspace = M.adjust (M.adjust (first (const (Just bc))) pos) t (chspace ch)}
 
-applyPWT :: Int -> ConsHistory -> PlayerWorldT -> MayFail ConsHistory
+applyPWT :: Int -> ConsHistory -> PWorld BlockTr -> MayFail ConsHistory
 applyPWT _t _ch _pwt = success _ch -- TODO: implement applyPWT
 
 {- MAIN FUNCTION: concreteHistory. should use runCondChecker -}

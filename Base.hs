@@ -1,9 +1,10 @@
-{-# LANGUAGE FlexibleContexts, DeriveFunctor #-}
+{-# LANGUAGE TypeFamilies, DeriveFunctor #-}
 {-# OPTIONS_GHC -Wall #-}
 
 module Base
   where
-  
+
+
 -- for a general explanation:
 -- see telegame workbook where the general approach
 -- is explained in the pages before the last Startup Training Course notes
@@ -28,9 +29,11 @@ Haskell Platform Core. 8.4.3
 package multiset (version 0.3.4)
 -}
 
+import Data.Proxy
 import qualified Data.Set as S
 import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MS
+import Data.List (intercalate)
 import qualified Data.Map as M
 
 {- coordinate system, x y -}
@@ -46,15 +49,30 @@ data Player = Player { pname :: String{-, page :: Int-}, peyes :: Bool, pinvento
 eqById :: Player -> Player -> Bool
 eqById (Player s {-_t-} _ _) (Player s' {-_t'-} _ _) = s == s' -- && _t == _t'
 
+type PWorld a = OpenObs a
+class Block a where
+  type OpenObs a
+  type ClosedObs a
+  type Cons a
+  type Antcpt a
+  on_standable :: a -> Bool
+  in_standable :: a -> Bool
+  permeable :: TimePos -> a -> CondRes
+  selfconsistent :: a -> CondRes
+  interferesWithBlock :: TimePos -> a -> ConditionsChecker
+  reduceToClosed :: Proxy a -> OpenObs a -> ClosedObs a
+  applypwObs :: Proxy a -> PWorld a -> (OpenObs a -> b) -> (ClosedObs a -> b) -> b
+;
+
 -- what the contents of a block can be.
 -- during state and transition.
 -- using multisets for objects, as they can occur multiple times
 -- due to time-travel
-data BlockContent = BC { bcps :: MultiSet Player, bcos :: MultiSet PhyObj, bcenv :: EnvObj }
+data BlockSt = BC { bcps :: MultiSet Player, bcos :: MultiSet PhyObj, bcenv :: EnvObj }
   deriving (Eq,Ord)
 ;
 
-newtype BC_Cons = BCC BlockContent
+newtype BC_Cons = BCC BlockSt
   deriving (Ord,Eq)
 -- OneP Player | OneO PhyObj | Bgrd EnvObj
 -- => e.g. OneP p1 & OneP p1 & OneP p2 & Bgrd (Door 0 0) <=>
@@ -71,7 +89,7 @@ data BCT_Cons =
    ,bctcFromPastO :: MultiSet PhyObj
 } deriving (Eq,Ord)
 
-data BlockContentT = BCT {
+data BlockTr = BCT {
     bctenv  :: (EnvObj,EnvT,EnvObj) -- old env, environment change, new env (possibly same)
    ,bctos   :: M.Map PhyObj (MultiSet PhyObjT) -- object motion. since objects can be multiple, each object is identified with a multiset of motions
    ,bctps   :: MultiSet (Player,PlayerT,Player) -- player before -> action -> player after
@@ -87,34 +105,15 @@ thd3 (_,_,c) = c
 
 {-
 IMPORTANT CONDITIONS:
-An unknown BlockContent has to be uniquely determinable from
+An unknown BlockSt has to be uniquely determinable from
 fully known neighboring BlockContentTs and distant blocks it interferes with (e.g. jump or teleport).
-same holds for BlockContentT.
+same holds for BlockTr.
 => using explicit constraints. BC_Cons and BCT_Cons
 -}
 
--- Specific BlockContent and Specific ClosedObs
--- as well as Specific BlockContent (for open eyes view)
--- and Specific (Pos,BlockContent) (with a single map entry) (for closed eyes)
-type OpenObs = Specific (Space BlockContent)
-type ClosedObs = Specific (Pos,BlockContent)
-
--- given a player-specific open-view, it reduces it to
--- the observations, the player would have, if there eyes were closed.
--- should be called on a player, that exists in ObenObs and whose eyes are closed.
-reduceToClosed :: OpenObs -> ClosedObs
-reduceToClosed spo@(Specific _ player _ mp) = spo {sobservations = (pos, mp M.! pos)}
-  where xs = M.filter (any (player==) . bcps) $ mp
-        pos = case (M.toList xs) of ((p,_):_) -> p ; [] -> error "reduceToClosed: Player not found"
-
--- analogous to above, just during transition.
--- the player is identified and their movements are traced to give the closed eyes observations.
--- the player should have their eyes closed.
-reduceToClosedT :: OpenObsT -> ClosedObsT
-reduceToClosedT spo@(Specific _ plyr _ mp) =
-  spo { sobservations = M.filter (any (\(p1,_,p2) -> p1 == plyr || p2 == plyr) . MS.toList . bctps) mp}
-  -- get all block-observations, where player is identified
-;
+-- Specific BlockSt and Specific ClosedObs
+-- as well as Specific BlockSt (for open eyes view)
+-- and Specific (Pos,BlockSt) (with a single map entry) (for closed eyes)
 
 -- if the eyes are opened during the transition, then
 -- the transition between intial and final state of the room
@@ -132,12 +131,12 @@ reduceToClosedT spo@(Specific _ plyr _ mp) =
 -- view of the room during time-transition
 
 -- observation during opened eyes. the entire map
-type OpenObsT = Specific (Space BlockContentT)
+-- type OpenObsT = Specific (Space BlockTr)
 
 {- observation, if the eyes are closed during transition -}
 -- for an explanation: see Telegame workbook
 -- We thus only need to collect a list of observed blicks/fields.
-type ClosedObsT = Specific (Space BlockContentT) -- == OpenObsT
+-- type ClosedObsT = Specific (Space BlockTr) -- == OpenObsT
 
 type Timed a = M.Map Time a
 type Space a = M.Map Pos a
@@ -197,10 +196,10 @@ data EnvT = EnvStays | EnvUsedOnce EAOnce | EnvUsedMult [EARep]
 
 data PlayerTotal =
   PAT { eyesClosedBeg :: Bool -- True, if the eyes are closed in the beginning
-        ,anticipationBeg :: Anticipation -- player can anticipate anything. though only their observations count
+        ,anticipationBeg :: Antcpt BlockSt -- player can anticipate anything. though only their observations count
         ,phyAction :: PlayerAction
-        ,anticipationT :: AnticipationT  -- anticipate transitions
-        ,anticipationEnd :: Anticipation -- anticipation also needs to work for closed eyes roomview
+        ,anticipationT :: Antcpt BlockTr  -- anticipate transitions
+        ,anticipationEnd :: Antcpt BlockSt -- anticipation also needs to work for closed eyes roomview
         ,eyesClosedEnd :: Bool
         -- there are two anticipation points.
         -- both corresponding to the ancitipated change of something before or after the turn and movement.
@@ -209,11 +208,11 @@ data PlayerTotal =
   }
 -- the order of 'execution' is the order of the records in the declaration
 
-type Anticipation = Space (Maybe BlockContent)
+-- type Anticipation = Space (Maybe BlockSt)
 -- an anticipation concerns only the positions with Just.
--- these positions have a new BlockContent specified as the desired state
+-- these positions have a new BlockSt specified as the desired state
 
-type AnticipationT = Space (Maybe BlockContentT)
+-- type AnticipationT = Space (Maybe BlockTr)
 
 data PlayerAction =
   MoveL | MoveR
@@ -318,17 +317,11 @@ runpat _init mot compl complf pat =
 -- ClosedObsT = observations of the blocks a specific player visits and from their view during transition
 
 -- a PlayerWorld has the information of how a room looks to a player.
-type PlayerWorld = OpenObs
-type PlayerWorldT = OpenObsT
+-- type PlayerWorld = OpenObs
+-- type PlayerWorldT = OpenObsT
 
--- PlayerWorld  ~= Time x PlayerID x Space BlockContent
--- PlayerWorldT ~= Time x PlayerID x Space BlockContentT
-
-applypwObs :: PlayerWorld -> (OpenObs -> a) -> (ClosedObs -> a) -> a
-applypwObs sobs fo fc = if peyes (splayer sobs) then fo sobs else fc (reduceToClosed sobs)
-
-applypwObsT :: PlayerWorldT -> (OpenObsT -> a) -> (ClosedObsT -> a) -> a
-applypwObsT sobs fo fc = if peyes (splayer sobs) then fo sobs else fc (reduceToClosedT sobs)
+-- PlayerWorld  ~= Time x PlayerID x Space BlockSt
+-- PlayerWorldT ~= Time x PlayerID x Space BlockTr
 
 type MayFail a = Either String a
 
@@ -350,7 +343,7 @@ maybeToEither e = maybe (Left e) Right
 -- a gamestate contains all the memories and acitons of all the players as well as the environmental changes
 -- it starts with the intial state of the players and adds an evolution
 -- of transitions and successive states of the world and the players.
-type TotalObservations = Timed (S.Set PlayerWorld, S.Set PlayerWorldT)
+type TotalObservations = Timed (S.Set (PWorld BlockSt), S.Set (PWorld BlockTr))
 data GameState = GS {
      gsobs :: TotalObservations
        -- an intial player state for each player AND
@@ -361,7 +354,7 @@ data GameState = GS {
     -- a represented set of histories which are consistent with the current observations
   }
 ;
-type Field = (Maybe BlockContent, Maybe BlockContentT)
+type Field = (Maybe BlockSt, Maybe BlockTr)
 type TimePos = (Time,Pos)
 type SpaceTime a = Timed (Space a)
 
@@ -376,8 +369,32 @@ data ConsHistory =
 -- The contraint matrix is indexed by
 --   [t= 0..maxTime] X {State, Transition} X [p = (0,0)..chsize]
 -- with the domain
---   (t,State,pos)       :: Maybe BlockContent  = Maybe (Set Player x Set PhyObj x EnvObj)
---   (t,Transition,pos)  :: Maybe BlockContentT for the transition starting at t
+--   (t,State,pos)       :: Maybe BlockSt  = Maybe (Set Player x Set PhyObj x EnvObj)
+--   (t,Transition,pos)  :: Maybe BlockTr for the transition starting at t
 -- If the Maybe is Just, then the contents are uniquely determined.
 -- If the Maybe is Nothing, then it is Unkown.
 -- Inconsistent histories cannot be created in the first place.
+
+
+type CondRes = String -- "" means satisfied. otherwise contradiction with description.
+data ConditionsChecker =
+  CC {
+    ccneeds :: S.Set TimePos
+   ,ccrun :: M.Map TimePos Field -> [CondRes] -- PRECONDITION: ccrun is called on a map,
+                                              -- which is defined for all keys in ccneeds!
+ -- perhaps add output method to generate contradiction results?
+ -- returns a CondRes for every check.
+  }
+;
+
+
+instance Show Player where -- added . at beginning and end for easier parsing
+  show (Player s {-age-} o inv) = "." ++ f (s {- ++ show age -}) ++ invStr ++ "."
+    where invStr | MS.null inv = ""
+                 | otherwise  = "("++(intercalate "+" . map show . MS.toAscList $ inv)++")"
+          f x = if not o then "<"++x++">" else x
+
+instance Show PhyObj where
+  show Key = "k"
+  show (TOrb c i) = 't':c:show i
+;

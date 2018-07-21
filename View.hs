@@ -4,6 +4,8 @@
 module View where
 
 import Base
+import Data.Proxy
+import Interference()
 import Data.List (intercalate,transpose)
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -47,7 +49,7 @@ toStringMultiMap = concatMap (\(x,ms) -> map (\y -> show y ++ " " ++ show x) $ M
 toStringMultiSet3 :: (Show a, Show b) => MultiSet (a,b,a) -> [String]
 toStringMultiSet3 = map (\(a,b,a') -> show a ++" "++show b++" "++show a') . MS.toList
 
-instance Show BlockContent where
+instance Show BlockSt where
   show (BC ps os e) = 
     let firstHalf = intercalate " " $ toStrings ps ++ toStrings os
         finalStr = if null (show e) || null firstHalf
@@ -61,7 +63,7 @@ deriving instance Show BC_Cons
 deriving instance Show BCT_Cons
 deriving instance Show EnvT
 
-instance Show BlockContentT where
+instance Show BlockTr where
   show (BCT (env1,envt,env2) ots pts) =
     let firstHalf = enclosing "[" "]" $ toStringMultiSet3 pts ++ toStringMultiMap ots 
         noChangeEnv = env1 == env2 && envt == EnvStays
@@ -74,10 +76,10 @@ instance Show BlockContentT where
     in  finalStr
 ;
 
-instance {-# Overlapping #-} Show (Maybe BlockContent) where
+instance {-# Overlapping #-} Show (Maybe BlockSt) where
   show = maybe "*" show
 ;
-instance {-# Overlapping #-} Show (Maybe BlockContentT) where -- more compact view of a Field-element
+instance {-# Overlapping #-} Show (Maybe BlockTr) where -- more compact view of a Field-element
   show = maybe "*" show
 ;
 
@@ -136,7 +138,7 @@ show2DMap mp (sx,sy) =
           ['A'..sy]
 ;
 
-showPlayerUnknown2DMap :: Space BlockContentT -> Pos -> String
+showPlayerUnknown2DMap :: Space BlockTr -> Pos -> String
 showPlayerUnknown2DMap mp (sx,sy) =
   intercalate "\n"
     $ map (intercalate ",")
@@ -147,18 +149,18 @@ showPlayerUnknown2DMap mp (sx,sy) =
           ['A'..sy]
 ;
 
-instance Show PlayerWorld where
+instance Show (Specific (Space BlockSt)) where
   show = showOpenObs
 
-instance Show PlayerWorldT where
+instance Show (Specific (Space BlockTr)) where
   show spo@(Specific t p sz bcmap) =
     showCompactPlayer p ++ " ["
     ++(if peyes p then "Opened eyes view" else "Closed eyes guess")
     ++", t = "++show t++"->"++show(t+1)++"]\n"
     ++ indent 2 (show2DMap bcmap sz)
-    ++ (if peyes p then "" else "\nwith " ++ showClosedObsT (reduceToClosedT spo))
+    ++ (if peyes p then "" else "\nwith " ++ showClosedObsT (reduceToClosed (Proxy::Proxy BlockTr) spo))
 ;
-showClosedObsT :: ClosedObsT -> String
+showClosedObsT :: ClosedObs BlockTr -> String
 showClosedObsT (Specific t p sz bcmap) =
   showCompactPlayer p ++ " [Closed eyes view, t = "++show t++"]\n"
   ++ indent 2 (showPlayerUnknown2DMap bcmap sz)
@@ -167,15 +169,15 @@ showClosedObsT (Specific t p sz bcmap) =
 showCompactPlayer :: Player -> String
 showCompactPlayer p = takeWhile (/='(') . init . tail $ show p
 
-showOpenObs :: OpenObs -> String
+showOpenObs :: OpenObs BlockSt -> String
 showOpenObs opbs@(Specific t p (sx,sy) bcmap) =
   showCompactPlayer p ++ " ["
   ++ (if peyes p then "Opened eyes view" else "Closed eyes guess")
   ++", t = "++show t++"]\n"
   ++ indent 2 (show2DMap bcmap (sx,sy))
-  ++ (if peyes p then "" else "\nwith " ++ showClosedObs (reduceToClosed opbs))
+  ++ (if peyes p then "" else "\nwith " ++ showClosedObs (reduceToClosed (Proxy::Proxy BlockSt) opbs))
 ;
-showClosedObs :: ClosedObs -> String
+showClosedObs :: ClosedObs BlockSt -> String
 showClosedObs (Specific t p _ (pos,bc)) =
   showCompactPlayer p ++ " [Closed eyes view"
   ++" at "++show (t,pos)++"]\n"
@@ -186,16 +188,6 @@ indent :: Int -> String -> String
 indent n str = tail $ concat . map f . map (:[]) $ "\n"++str
   where f "\n" = "\n" ++ replicate n ' '
         f s    = s
-
-instance Show Player where -- added . at beginning and end for easier parsing
-  show (Player s {-age-} o inv) = "." ++ f (s {- ++ show age -}) ++ invStr ++ "."
-    where invStr | MS.null inv = ""
-                 | otherwise  = "("++(intercalate "+" . map show . MS.toAscList $ inv)++")"
-          f x = if not o then "<"++x++">" else x
-
-instance Show PhyObj where
-  show Key = "k"
-  show (TOrb c i) = 't':c:show i
 
 instance Read Player where
   readsPrec _ ('.':s') =
@@ -219,10 +211,10 @@ instance Read PhyObj where
   readsPrec _ _str = []
 ;
 
-fromString :: String -> Space BlockContent
+fromString :: String -> Space BlockSt
 fromString = fromNestedList . map (map unpack . split (==',') . pack) . lines
 
-fromNestedList :: [[String]] -> Space BlockContent
+fromNestedList :: [[String]] -> Space BlockSt
 fromNestedList =
   M.fromList . concat . zipWith (\y -> zipWith (f y) [0::Int ..]) ['A'..]
   where f y x s = ((x,y),read s)
@@ -240,7 +232,7 @@ instance Read EnvObj where
   readsPrec _ _str = [] -- error $ "readEnv: Could not parse " ++ xs
 
 
-instance Read BlockContent where
+instance Read BlockSt where
   readsPrec _ "" = [(BC MS.empty MS.empty Blank,"")]
   readsPrec n str =
     let ws = words str

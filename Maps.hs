@@ -20,7 +20,7 @@ mkPwith eo ls = Player "P" eo (MS.fromList ls)
 one (act,p) = MS.singleton (p,act,p)
 oneO (mot,o) = M.singleton o (MS.singleton mot)
 
-noAction :: (Functor f, Functor g) => f (g BlockContent) -> f (g BlockContentT)
+noAction :: (Functor f, Functor g) => f (g BlockSt) -> f (g BlockTr)
 noAction = fmap (fmap f)
   where f (BC ps os env) = BCT {
        bctenv = (env,EnvStays,env)
