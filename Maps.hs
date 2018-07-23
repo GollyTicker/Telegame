@@ -92,7 +92,7 @@ map2_P0_t3T =
   $ noAction map2_P0_t3
 
 map2_P0_t4 = Specific 4 (mkP True) (7,'D') $ fromString
-    " , ,_, , , ,.<P>. D00, \n\
+    " , ,_, , , ,.P. D00, \n\
     \S, , , , ,S,      S,S\n\
     \S,S, , , ,S,      S,S\n\
     \S,S,S,S,S,S,      S,S"

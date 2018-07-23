@@ -193,7 +193,7 @@ data EnvObj = Door { dneeds :: Int, dhas :: Int } {- # keys needed, # keys insid
 data EnvT = EnvStays | EnvUsedOnce EAOnce | EnvUsedMult [EARep]
   deriving (Eq,Ord)
 
-
+-- TODO: integrate PlayerActionTotal...
 data PlayerTotal =
   PAT { eyesClosedBeg :: Bool -- True, if the eyes are closed in the beginning
         ,anticipationBeg :: Antcpt BlockSt -- player can anticipate anything. though only their observations count
