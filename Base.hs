@@ -13,20 +13,13 @@ module Base
 Main todo:
 . implement game state tansition function
 . clean up and tidy and refactor
-. make web.interface. What to use?
-  -> web-interface with Elm and interoperate with Haskell
-    on server-side?
-    -> using example https://github.com/haskell-servant/example-servant-elm
-      -> FAIL cannot run on windows
-  -> using haste.
-    install https://github.com/valderman/haste-compiler/blob/master/doc/building.md
-    -> great examples:
-       1. http://ifeanyi.co/posts/client-side-haskell/
-       2. 
 
 versions and packages:
-Haskell Platform Core. 8.4.3
-package multiset (version 0.3.4)
+. Haskell Platform Core. 8.4.3
+. Haste (linux pre-built): pre-built package: https://haste-lang.org/downloads/
+. install new packages using haste-cabal instead of
+normal cabal due to hastes cross compilation.
+. package multiset (version 0.3.4)
 -}
 
 import Data.Proxy
