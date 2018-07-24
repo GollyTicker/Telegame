@@ -1,5 +1,11 @@
-{-# LANGUAGE TypeFamilies #-}
-{-# OPTIONS_GHC -Wall -Wno-orphans -Wno-missing-signatures #-}
+{-# LANGUAGE CPP, TypeFamilies #-}
+-- GHC CPP macros: https://downloads.haskell.org/~ghc/8.0.1/docs/html/users_guide/phases.html#standard-cpp-macros
+-- https://guide.aelve.com/haskell/cpp-vww0qd72
+#if __GLASGOW_HASKELL__ >= 800
+{-# OPTIONS_GHC -Wall -Wno-orphans -no-missing-signatures #-}
+#else
+{-# OPTIONS_GHC -Wall -fno-warn-orphans -fno-warn-missing-signatures #-}
+#endif
 
 module Interference where
 
@@ -82,7 +88,7 @@ instance Block BlockTr where
 
 
 mkCCsingle :: TimePos -> (Field -> CondRes) -> ConditionsChecker
-mkCCsingle tpos f = CC {ccneeds = S.singleton tpos, ccrun = (:[]) . f . maybe (error "mkCCsingle[fatal]: CC precondition violated") id . (M.!? tpos)}
+mkCCsingle tpos f = CC {ccneeds = S.singleton tpos, ccrun = (:[]) . f . maybe (error "mkCCsingle[fatal]: CC precondition violated") id . (M.lookup tpos)}
 
 {- y-axis is pointed downwards -}
 -- isGrounded ensures, that current position is on ground.
@@ -106,9 +112,12 @@ isPermeable curr = mkCCsingle curr (unknownOkAnd (permeable curr) . fst)
 -- ConditionsChecker is a Monoid.
 -- CondRes only has a 0-Element, but no binary operation for it.
 {- DIFINITION in Base -}
-instance Semigroup ConditionsChecker where -- required by Monoid
+#if __GLASGOW_HASKELL__ >= 800
+instance Semigroup ConditionsChecker where -- required by Monoid, since GHC 8.
   (<>) = also
 ;
+#else
+#endif
 instance Monoid ConditionsChecker where
   mempty = alwaysOk
   mappend = also

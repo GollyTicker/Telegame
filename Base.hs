@@ -18,7 +18,9 @@ versions and packages:
 . Haskell Platform Core. 8.4.3
 . Haste (linux pre-built): pre-built package: https://haste-lang.org/downloads/
 . install new packages using haste-cabal instead of
-normal cabal due to hastes cross compilation.
+normal cabal due to haste's cross compilation.
+. it also uses a different ghc than the sys-wide installation.
+. the haste-installation is found in /usr/local/lib/haste-compiler
 . package multiset (version 0.3.4)
 -}
 

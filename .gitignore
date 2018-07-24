@@ -25,4 +25,5 @@ cabal.project.local
 
 # Haste and compiled output
 *.jsmod
-
+*.js
+*.html
