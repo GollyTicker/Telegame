@@ -11,7 +11,6 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MS
-import Data.Text (split,pack,unpack)
 
 instance Show EnvObj where
   show (Door n h) = "D"++show n ++ show h
@@ -25,6 +24,9 @@ instance Show EnvObj where
             | n <= 9 = '0':show n
             | otherwise = show n -}
 ;
+
+split :: (a -> Bool) -> [a] -> [[a]]
+split f s = foldr (\x (a:as) -> if f x then []:(a:as) else (x:a):as) [[]] s
 
 padspaces :: [[String]] -> [[String]]
 padspaces xss =
@@ -196,7 +198,7 @@ instance Read Player where
         let s = init s'
             opened = head s /= '<'
             inv 
-              | length (filter (=='(') s) > 0 = MS.fromList . map (read . unpack) . split (=='+') . pack . reverse . tail . reverse . tail . dropWhile (/='(') $ s
+              | length (filter (=='(') s) > 0 = MS.fromList . map read . split (=='+') . reverse . tail . reverse . tail . dropWhile (/='(') $ s
               | otherwise = MS.empty
             nameAgeStr = filter (\x -> notElem x "<>") . takeWhile (/='(') $ s
             -- ageStr = takeWhile (\x -> elem x "0123456789") . reverse $ nameAgeStr
@@ -212,7 +214,7 @@ instance Read PhyObj where
 ;
 
 fromString :: String -> Space BlockSt
-fromString = fromNestedList . map (map unpack . split (==',') . pack) . lines
+fromString = fromNestedList . map (split (==',')) . lines
 
 fromNestedList :: [[String]] -> Space BlockSt
 fromNestedList =
