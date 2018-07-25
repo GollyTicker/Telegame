@@ -16,23 +16,33 @@ Main todo:
 . use a good haskell IDE to make types support writing even more?
   https://github.com/haskell/haskell-ide-engine
 . use refinement types with liquid haskell to make better compile time assurance
+  . or maybe simply stick to quickcheck? liquid haskell needs more time to learn though...
+    especially, I want to "prove" properties between functions. and this is
+    not immediately possible without existentials
+  . add more properties and tests for quickcheck
 
 versions and packages:
 . Haskell Platform Core. 8.4.3
-. liquid haskell for backend verificaiton:https://github.com/ucsd-progsys/liquidhaskell/blob/develop/INSTALL.md
   . using Z3 4.7.1 https://github.com/Z3Prover/z3/tree/z3-4.7.1
 . stack 1.7.1: from pre-built binary https://github.com/commercialhaskell/stack/releases
 . Haste (linux pre-built): pre-built package: https://haste-lang.org/downloads/
+. quickcheck: http://www.cse.chalmers.se/~rjmh/QuickCheck/manual_body.html#16
 . install new packages using haste-cabal instead of
 normal cabal due to haste's cross compilation.
 . it also uses a different ghc than the sys-wide installation.
 . the haste-installation is found in /usr/local/lib/haste-compiler
 . package multiset (version 0.3.4)
+. NOT-USING-CURRENTLY: liquid haskell for backend verificaiton:https://github.com/ucsd-progsys/liquidhaskell/blob/develop/INSTALL.md
 
 Stack:
 . using two builds. one for running locally on console (main in Maps.hs),
 and the other one running as html-webpage by haste.
   stack ghci, stack setup, stack build, stack exec ....
+
+Liquid Haskell:
+  . mini intro: https://ucsd-progsys.github.io/liquidhaskell-blog/
+  . long book: http://ucsd-progsys.github.io/liquidhaskell-tutorial/01-intro.html#/sample-code
+  . stack exec liquid src/Base.hs src/Interference.hs ...
 -}
 
 import Data.Proxy
@@ -45,7 +55,7 @@ import qualified Data.Map as M
 {- coordinate system, x y -}
 type Time = Int
 type Pos = (Int,Char)
-data Player = Player { pname :: String{-, page :: Int-}, peyes :: Bool, pinventory :: MultiSet PhyObj}
+data Player = Player { pname :: String {- must be non-empty -}, peyes :: Bool, pinventory :: MultiSet PhyObj}
   deriving (Eq,Ord)
   {- name,(removed age for loops) , True means eyes are open, inventory -}
 
@@ -66,6 +76,7 @@ class Block a where
   permeable :: TimePos -> a -> CondRes
   selfconsistent :: a -> CondRes
   interferesWithBlock :: TimePos -> a -> ConditionsChecker
+  {-@ reduceToClosed  :: Proxy a -> OpenObs a -> ClosedObs a @-}
   reduceToClosed :: Proxy a -> OpenObs a -> ClosedObs a
   applypwObs :: Proxy a -> PWorld a -> (OpenObs a -> b) -> (ClosedObs a -> b) -> b
 ;

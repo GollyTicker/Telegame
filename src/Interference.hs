@@ -34,6 +34,11 @@ instance Block BlockSt where
 -- given a player-specific open-view, it reduces it to
 -- the observations, the player would have, if there eyes were closed.
 -- should be called on a player, that exists in ObenObs and whose eyes are closed.
+
+{-@
+type ValidOpenBSt = { spo : OpenObs BlockSt | (Player "s" True undefined) == splayer spo}
+@-}
+{-@ reduceToClosedSt :: ValidOpenBSt -> ClosedObs BlockSt @-}
 reduceToClosedSt :: OpenObs BlockSt -> ClosedObs BlockSt
 reduceToClosedSt spo@(Specific _ player _ mp) = spo {sobservations = (pos, mp M.! pos)}
   where xs = M.filter (any (player==) . bcps) $ mp
@@ -112,7 +117,7 @@ isPermeable curr = mkCCsingle curr (unknownOkAnd (permeable curr) . fst)
 -- ConditionsChecker is a Monoid.
 -- CondRes only has a 0-Element, but no binary operation for it.
 {- DIFINITION in Base -}
-#if __GLASGOW_HASKELL__ >= 800
+#if __GLASGOW_HASKELL__ >= 840
 instance Semigroup ConditionsChecker where -- required by Monoid, since GHC 8.
   (<>) = also
 ;

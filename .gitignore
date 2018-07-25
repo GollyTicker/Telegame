@@ -1,5 +1,4 @@
 # Haskell
-
 dist
 dist-*
 cabal-dev
@@ -27,3 +26,6 @@ cabal.project.local
 *.jsmod
 *.js
 *.html
+
+# liquid
+src/.liquid
