@@ -2,7 +2,7 @@
 -- GHC CPP macros: https://downloads.haskell.org/~ghc/8.0.1/docs/html/users_guide/phases.html#standard-cpp-macros
 -- https://guide.aelve.com/haskell/cpp-vww0qd72
 #if __GLASGOW_HASKELL__ >= 800
-{-# OPTIONS_GHC -Wall -Wno-orphans -no-missing-signatures #-}
+{-# OPTIONS_GHC -Wall -Wno-orphans -Wno-missing-signatures #-}
 #else
 {-# OPTIONS_GHC -Wall -fno-warn-orphans -fno-warn-missing-signatures #-}
 #endif

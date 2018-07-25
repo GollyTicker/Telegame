@@ -116,7 +116,7 @@ map2_GS =
       f = S.singleton
   in  either (error . ("map2_GS: "++)) id $ GS obs <$> computeCHfromObs obs
 
-
+main :: IO ()
 main = do
   putStrLn "Some Open/Closed Observations:"
   print map1_P0 >> putChar '\n'
