@@ -48,8 +48,6 @@ Liquid Haskell:
 import Data.Proxy
 import qualified Data.Set as S
 import Data.MultiSet (MultiSet)
-import qualified Data.MultiSet as MS
-import Data.List (intercalate)
 import qualified Data.Map as M
 
 {- coordinate system, x y -}
@@ -71,9 +69,10 @@ class Block a where
   type ClosedObs a
   type Cons a
   type Antcpt a
+  isState :: Proxy a -> Bool {- True for BlockSt, False for BlockTr -}
   on_standable :: a -> Bool
   in_standable :: a -> Bool
-  permeable :: TimePos -> a -> CondRes
+  permeable :: Show b => TimePos -> b -> a -> CondRes
   selfconsistent :: a -> CondRes
   interferesWithBlock :: TimePos -> a -> ConditionsChecker
   {-@ reduceToClosed  :: Proxy a -> OpenObs a -> ClosedObs a @-}
@@ -172,10 +171,8 @@ data PhyObjT = NoMotionT | MotionT Dir Dir
   | LandFrom Dir -- land from throws. Dir is L, R or U
   | IntoInventory {- also counting Door or switch -}
   | OntoGround {- also from switch or door -}
-  | TParrive Char | TPexit Char
-  | TPsend | TPget
-  -- when objects lying on ground are sent though tp.
-  -- teleorbs, when they are on ground, have TPsend for the
+  | TParrive Char | TPexit Char -- when objects lying on ground are sent though tp.
+  | TPsend | TPget -- teleorbs, when they are on ground, have TPsend for the
   -- source and TPget for the destination orb. both get destroyed then.
   deriving (Eq,Ord)
 -- motion from directon to direction. e.g. Motion R D means, that it came from right and fell down at our block
@@ -404,14 +401,3 @@ data ConditionsChecker =
   }
 ;
 
-
-instance Show Player where -- added . at beginning and end for easier parsing
-  show (Player s {-age-} o inv) = "." ++ f (s {- ++ show age -}) ++ invStr ++ "."
-    where invStr | MS.null inv = ""
-                 | otherwise  = "("++(intercalate "+" . map show . MS.toAscList $ inv)++")"
-          f x = if not o then "<"++x++">" else x
-
-instance Show PhyObj where
-  show Key = "k"
-  show (TOrb c i) = 't':c:show i
-;
