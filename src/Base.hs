@@ -24,6 +24,8 @@ Main todo:
   . make hunit tests? that would be nice
 . add information, on whether a TimePos points to a St or Tr. use this while displaying contradiction
 
+count code size: cloc --exclude-ext=html,css src/
+
 versions and packages:
 . Haskell Platform Core. 8.4.3
   . using Z3 4.7.1 https://github.com/Z3Prover/z3/tree/z3-4.7.1
@@ -76,7 +78,6 @@ class (Show (This a),Typeable a) => Block a where
   type Other a
   data This a
   this :: This a
-  isState :: Proxy a -> Bool {- True for BlockSt, False for BlockTr -}
   getter :: This a -> Field -> Maybe a
   on_standable :: a -> Bool
   in_standable :: a -> Bool
@@ -195,6 +196,10 @@ rundir l u r d dir = case dir of L -> l; U -> u; R -> r; D -> d
 invDir :: Dir -> Dir
 invDir = rundir R D L U
 
+applyDir :: Dir -> TimePos -> TimePos
+applyDir d (t,(x,y)) = case rundir (pred,id) (id,pred) (succ,id) (id,succ) d
+  of (f,g) -> (,) t (f x,g y)
+
 data PhyObj = TOrb Char Int {- identifier, int is 0 or 1 -}
             | Key
   deriving (Ord,Eq,Data,Typeable)
@@ -261,7 +266,8 @@ data PlayerAction =
   | Teleport {
      tpch :: Char
     ,tpobjs :: (MultiSet Player, MultiSet PhyObj) -- teleorbs of channel at source/dest. are not sent
-    ,tpdesttime :: Int -- at finish of arrival. in case of normal space-tp: currTime+1
+    ,tpsource :: TimePos -- tpos before start of teleportation.
+    ,tpdest   :: TimePos -- tpos at finish of arrival. in case of normal space-tp: currTime+1
   }
   deriving (Eq,Ord)
 ;
@@ -274,7 +280,7 @@ runpa :: a -> a ->
          (Char -> a) ->
          (EAOnce -> a) ->
          ([EARep] -> a) ->
-         (Char -> (MultiSet Player,MultiSet PhyObj) -> Int -> a) ->
+         (Char -> (MultiSet Player,MultiSet PhyObj) -> TimePos -> TimePos -> a) ->
          PlayerAction -> a
 runpa ml mr ju jul jur na pk pt tl tr newto ueo uem tele pa =
   case pa of MoveL -> ml
@@ -290,10 +296,21 @@ runpa ml mr ju jul jur na pk pt tl tr newto ueo uem tele pa =
              NewTOs c -> newto c
              UseEnvOnce eao -> ueo eao
              UseEnvMult eam -> uem eam
-             Teleport ch os t -> tele ch os t
+             Teleport ch os ts td -> tele ch os ts td
 ;
-
-
+toDirpa :: PlayerAction -> Maybe Dir
+toDirpa = runpa (j L) (j R) (j U) (j U) (j U)
+          n (\_->n) (\_->n) (\_ _->n) (\_ _->n) (\_->n) (\_->n) (\_->n) (\_ _ _ _->n)
+  where
+    n = Nothing; j = Just
+;
+-- called on a (Completed playerAction)
+fromDirpa :: PlayerAction -> Maybe Dir
+fromDirpa = runpa (j R) (j L) (j D) (j R) (j L)
+          n (\_->n) (\_->n) (\_ _->n) (\_ _->n) (\_->n) (\_->n) (\_->n) (\_ _ _ _->n)
+  where
+    n = Nothing; j = Just
+;
 -- in addition to player actions,
 -- during transition one can observe a few more things
 -- in additions to the normals commands. they are complemented here
@@ -382,11 +399,14 @@ data GameState = GS {
 type Field = (Maybe BlockSt, Maybe BlockTr)
 type TimePos = (Time,Pos)
 type SpaceTime a = Timed (Space a)
-
+type TeleportInfo = PlayerAction {- only Teleport case allowed -}
+{- tpos before starting tp, teleorb-pair identifier, transfered objects, tpos after arrival -}
+type CH_Global = M.Map Char TeleportInfo -- no in map is eqivalient to unknown.
 data ConsHistory =
   CH {
     chspace  :: SpaceTime Field
-   ,chsize :: TimePos
+   ,chsize   :: TimePos
+   ,chglobal :: CH_Global 
   }
 ;
 -- maxTime: maximum time for which the history is considered. on time progression
@@ -405,8 +425,9 @@ type CondRes = String -- "" means satisfied. otherwise contradiction with descri
 data ConditionsChecker =
   CC {
     ccneeds :: S.Set TimePos
-   ,ccrun :: M.Map TimePos Field -> [CondRes] -- PRECONDITION: ccrun is called on a map,
-                                              -- which is defined for all keys in ccneeds!
+   ,ccrun :: M.Map TimePos Field -> CH_Global -> [CondRes]
+                      -- PRECONDITION: ccrun is called on a map,
+                      -- which is defined for all keys in ccneeds!
  -- perhaps add output method to generate contradiction results?
  -- returns a CondRes for every check.
   }

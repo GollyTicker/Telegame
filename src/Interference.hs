@@ -11,13 +11,14 @@ module Interference where
 
 import Base
 import Data.Data
+import Control.Monad (foldM)
 import ViewBase()
 import qualified Data.Set as S
 import qualified Data.Map as M
 -- import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MS
 import Data.Monoid
---import Debug.Trace
+-- import Debug.Trace
 -- import Control.Applicative
 
 instance Block BlockSt where
@@ -29,7 +30,6 @@ instance Block BlockSt where
   data This BlockSt = St
   this = St
   getter St = fst
-  isState Proxy = True
   on_standable bc = envStandable (bcenv bc)
   in_standable bc = envStandableIn (bcenv bc)
   permeable curr reason bc = fromBool (show (curr,St) ++ " requires permeable for " ++ show reason) $ envPermeable (bcenv bc)
@@ -49,7 +49,6 @@ instance Block BlockTr where
   type Cons BlockTr = BCT_Cons
   type Antcpt BlockTr = Space (Maybe BlockTr)
   type Other BlockTr = BlockSt
-  isState Proxy = False
   data This BlockTr = Tr
   this = Tr
   getter Tr = snd
@@ -86,6 +85,8 @@ deriving instance Typeable BlockTr
 deriving instance Data GameState
 deriving instance Typeable GameState
 
+is_a :: (Block b,Block c) => This b -> This c -> Bool
+ths `is_a` oth = typeOf ths == typeOf oth
 
 envPermeable :: Env -> Bool
 envPermeable Solid = False
@@ -108,8 +109,21 @@ envTStandable _ = True
 
 -- Given a field and predicate for that field, it checks,
 -- whether the predicate is satisfied by that field.
-mkCCsingle :: TimePos -> (Field -> CondRes) -> ConditionsChecker
-mkCCsingle tpos f = CC {ccneeds = S.singleton tpos, ccrun = (:[]) . f . maybe (error "mkCCsingle[fatal]: CC precondition violated") id . M.lookup tpos}
+--mkSimpleCCwithGlobal :: TimePos -> (Field -> CondRes) -> ConditionsChecker
+--mkSimpleCCwithGlobal tpos f = CC {ccneeds = S.singleton tpos, ccrun = (:[]) . f . maybe (error "mkSimpleCC[fatal]: CC precondition violated") id . M.lookup tpos}
+
+mkGlobalCC :: (CH_Global -> CondRes) -> ConditionsChecker
+mkGlobalCC f = CC { ccneeds = S.empty, ccrun = \_ g -> [f g] }
+
+mkSimpleCCwithGlobal :: TimePos -> (Field -> CH_Global -> CondRes) -> ConditionsChecker
+mkSimpleCCwithGlobal tpos f = CC {
+  ccneeds = S.singleton tpos,
+  ccrun = \mp g -> (:[]) . flip f g . maybe (error "mkSimpleCC[fatal]: CC precondition violated") id . M.lookup tpos $ mp}
+  
+mkSimpleCC :: TimePos -> (Field -> CondRes) -> ConditionsChecker
+mkSimpleCC tpos f = CC {
+  ccneeds = S.singleton tpos,
+  ccrun = \mp _g -> (:[]) . f . maybe (error "mkSimpleCC[fatal]: CC precondition violated") id . M.lookup tpos $ mp}
 
 {- y-axis is pointed downwards -}
 -- is1 ensures, that current position is on ground.
@@ -118,15 +132,15 @@ isGrounded :: (Show a,Block b) => This b -> TimePos -> a -> ConditionsChecker
 isGrounded ths curr@(t,(x,y)) reason =
   let below = (t,(x,succ y))
   in  CC { ccneeds = S.fromList [curr,below],
-           ccrun   = \mp ->
+           ccrun   = \mp _g ->
              (:[])
-             $ unknownOkAnd (\foundStd -> if not (getAny foundStd) then show (curr,ths) ++ " needs standable (cause: "++show reason++") on "++show below ++" or standable in "++ show curr else ok)
+             . (unknownOkAnd (\foundStd -> if not (getAny foundStd) then show (curr,ths) ++ " needs standable (cause: "++show reason++") on "++show below ++" or standable in "++ show curr else ok))
              $ (fmap (Any . in_standable) . getter ths $ mp M.! curr) `mappend` (fmap (Any . on_standable) . getter ths $ mp M.! below)
       }
 ;
 
 isPermeable :: (Block b,Show a) => This b -> TimePos -> a -> ConditionsChecker
-isPermeable ths curr reason = mkCCsingle curr (unknownOkAnd (permeable curr reason) . getter ths)
+isPermeable ths curr reason = mkSimpleCC curr $ unknownOkAnd (permeable curr reason) . getter ths
 
 -- a condition checker specified a set of TimePos
 -- it wants to access. it also specifies a function which gets
@@ -158,12 +172,12 @@ unknownOkAnd :: (a -> CondRes) -> Maybe a -> CondRes
 unknownOkAnd = maybe ok
 
 alwaysOk :: ConditionsChecker
-alwaysOk = CC { ccneeds = S.empty, ccrun = const []}
+alwaysOk = CC { ccneeds = S.empty, ccrun = \_ _ -> []}
 
 also :: ConditionsChecker -> ConditionsChecker -> ConditionsChecker
 (CC nds runcc) `also` (CC nds' runcc') =
     CC { ccneeds = S.union nds nds',
-         ccrun = \mp -> runcc mp ++ runcc' mp}
+         ccrun = \mp g-> runcc mp g ++ runcc' mp g}
 
 -- all interferesWith functions check at the current BlockSt.
 -- all interferesWithT functions check at the current BlockTr.
@@ -186,21 +200,57 @@ playerInterferesWithT :: TimePos -> (Player,PlayerT,Player) -> ConditionsChecker
 playerInterferesWithT curr p =
   let needsGroundCheck = runpat (const True) (\_ _ -> False) (const True) True (snd3 p)
       {- case (Completed pa): currently, all completed actions require a grounded place as dest. -}
-  in 
-     if needsGroundCheck then isGrounded Tr curr p else alwaysOk
+      {- physical movement: movingNext = Nothing, if player doesn't move out of current block.
+         Just Dir, if the player continues in direction Dir. time-inverse with Next<->From. teleport is not included here -}
+      movingNext   = runpat toDirpa (\_ y->Just y) (const Nothing) Nothing (snd3 p)
+      nextReqStr d = show (curr,Tr) ++ " requires a continuation of movement "     ++ show (snd3 p) ++ " to " ++ show (applyDir d curr,Tr)
+      movingFrom   = runpat (const Nothing) (\x _->Just x) fromDirpa (Just U) (snd3 p)
+      fromReqStr d = show (curr,Tr) ++ " requires a preceding action to continue " ++ show (snd3 p) ++ " from " ++ show (applyDir d curr,Tr)
+      leavesPuzzle = case snd3 p of
+        (Completed (UseEnvMult es)) -> case es of [] -> False; _non_empty -> last es == TraverseDoor
+        _ -> False
+      -- globalMismatch :: PlayerAction -> PlayerAction -> CondRes
+      -- globalMismatch tpl tpg = show (curr,Tr) ++ " contains " ++ show tpl ++ " which should be consistent to global information " ++ show tpg
+  in (if needsGroundCheck then isGrounded Tr curr p else alwaysOk)
      `also` isPermeable Tr curr p
-     `also` hasFutureIf Tr St curr p (const True :: BlockSt -> Bool)
-     -- todo: implement hasfutureSt and hasPastSt
+     `also` (case snd3 p of {- teleport cases (todo) -}
+        Initiated _tp@(Teleport {}) -> alwaysOk
+          -- mkGlobalCC (\g -> unknownOkAnd (\tp' -> fromBool (globalMismatch tp tp') (tp==tp')) $ M.lookup (tpch tp) g)
+          -- this actually belongs to the self-consistency tests.
+          -- why not simply do self-consistency check here as well?
+          -- todo: a check for landing on the other side is not nesessary, as each will know,
+          -- that it is itself consistent with global information when the check runs.
+          -- or perhaps, we need idenpendent consistency checks for the global-infos.
+          -- because, if the partner tp-palce has no tp-action, this would not be recognized currently.
+        Completed _tp@(Teleport {}) -> alwaysOk
+          -- mkGlobalCC (\g -> unknownOkAnd (\tp' -> fromBool (globalMismatch tp tp') (tp==tp')) $ M.lookup (tpch tp) g)
+        _ {- non-teleport cases -}  ->
+          (if leavesPuzzle then alwaysOk else case movingNext of
+              Nothing -> hasFutureIf Tr St curr (thd3 p) (any ((thd3 p)==) . bcps)
+              Just d  -> mkSimpleCC (applyDir d curr) $ unknownOkAnd (fromBool (nextReqStr d) . any (p `canBePredOf`) . bctps) . getter Tr
+          ) `also` case movingFrom of
+              Nothing -> hasPastIf Tr St curr (fst3 p) (any ((fst3 p)==) . bcps);
+              Just d  -> mkSimpleCC (applyDir d curr) $ unknownOkAnd (fromBool (fromReqStr d) . any (`canBePredOf` p) . bctps) . getter Tr
+      )
+;
+{- todo: higher-prototype: check, what all these items do.
+  handle teleportation processes by using a Reader which holds information
+  on current global things like tp[char], switch etc.-}
+
+canBePredOf :: (Player,PlayerT,Player) -> (Player,PlayerT,Player) -> Bool
+(_,_act1,p1) `canBePredOf ` (p2,_act2,_) = p1 == p2 {- todo: -}
+
+hasFutureIf :: (Show a,Block b,Block c) => This b -> This c -> TimePos -> a -> (c -> Bool) -> ConditionsChecker
+hasFutureIf ths oth (t,pos) o f =
+  let dest = if ths `is_a` St then (t,pos) else (t+1,pos)
+  in  mkSimpleCC dest $ unknownOkAnd (fromBool (show ((t,pos),ths) ++" requires future for "++show o ++ " at " ++ show (dest,oth)) . f) . getter oth
 ;
 
-hasFutureIf :: (Show a,Block b,Block (Other b)) => This b -> This (Other b) -> TimePos -> a -> (Other b -> Bool) -> ConditionsChecker
-hasFutureIf ths oth curr o f = mkCCsingle curr (unknownOkAnd (fromBool (show (curr,ths) ++" requires future for "++show o) . f) . (getter oth))
-
-hasPastIf :: (Show a,Block b,Block (Other b)) => This b -> This (Other b) -> TimePos -> a -> (Other b -> Bool) -> ConditionsChecker
+hasPastIf :: (Show a,Block b,Block c) => This b -> This c -> TimePos -> a -> (c -> Bool) -> ConditionsChecker
 hasPastIf ths oth (t,pos) o f =
-  if t <= 0 && isState (Proxy :: Proxy BlockSt)
-    then alwaysOk
-    else mkCCsingle (t-1,pos) (unknownOkAnd (fromBool (show ((t-1,pos),ths) ++" requires past for "++show o) . f) . (getter oth))
+  let (dest,atBoundary) = if ths `is_a` St then ((t-1,pos),t <= 0) else ((t,pos),False)
+  in  if atBoundary then alwaysOk
+      else mkSimpleCC dest $ unknownOkAnd (fromBool (show ((t,pos),ths) ++" requires past for "++show o ++" at " ++ show (dest,oth)) . f) . getter oth
 
 phyObjInterferesWithT :: TimePos -> PhyObj -> PhyObjT -> ConditionsChecker
 phyObjInterferesWithT _ _ _ = alwaysOk
@@ -237,6 +287,16 @@ envInterferesWith curr env =
   (if (case env of Door _ _ -> True; Switch _ -> True; _ -> False) then isGrounded St curr env else alwaysOk)
   `also` hasFutureIf St Tr curr env ((env==) . fst3 . bctenv)
   `also` hasPastIf   St Tr curr env ((env==) . thd3 . bctenv)
+;
+
+adjustGlobalInfo :: BlockTr -> ConsHistory -> MayFail ConsHistory
+adjustGlobalInfo bct ch0 = foldM f ch0 (bctps bct) where
+  insertable t ch = maybe True (t==) $ M.lookup (tpch t) (chglobal ch)
+  inserttp   t ch = ch {chglobal = M.insert (tpch t) t (chglobal ch)}
+  failStr    t ch = "Teleport observation "++show t++" contradicts established global-information " ++ show (chglobal ch)
+  f ch (_,Completed (tp@Teleport{}),_) = if insertable tp ch then success (inserttp tp ch) else failing $ failStr tp ch
+  f ch (_,Initiated (tp@Teleport{}),_) = if insertable tp ch then success (inserttp tp ch) else failing $ failStr tp ch
+  f ch _ = success ch
 ;
 
 -- a function crucial for concreteHistory.

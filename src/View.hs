@@ -153,12 +153,15 @@ showSet :: Show a => S.Set a -> String
 showSet = intercalate "\n" . map show . S.toList
 
 instance Show ConsHistory where
-  show (CH m sz) = 
+  show (CH m sz g) = 
     case (
       do minT <- maybeToEither "Empty history" . fmap (fst.fst) $ M.minViewWithKey m
          maxT <- maybeToEither "Empty history" . fmap (fst.fst) $ M.maxViewWithKey m
          return $ "History from t="++show minT++" to t=" ++ show maxT ++ " and spacetime-size = "++show sz++":"
-                ++ M.foldlWithKey' f "" m ++ "\n\n ====== end of history ========")
+                ++ M.foldlWithKey' f "" m
+                ++"\n\nwith global information:"
+                ++ (if M.null g then " none" else M.foldlWithKey' (\s _ e-> s++"\n"++show e) "" g)
+                ++"\n\n====== end of history ========")
     of Left e -> "History invalid due to: " ++ e
        Right x -> x
     where f str t sp =

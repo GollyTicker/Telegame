@@ -74,7 +74,7 @@ map2_P0_t2 = Specific 2 (mkP True) (7,'D') $ fromString
     \S,S,    S,S,S,  S,   S,S"
 ;
 
-mytp = Teleport {tpch = 'x', tpobjs = (MS.singleton (mkP True),MS.empty), tpdesttime = 3} 
+mytp = Teleport {tpch = 'x', tpobjs = (MS.singleton (mkP True),MS.empty), tpsource = (2,(2,'A')), tpdest = (3,(5,'A'))} 
 map2_P0_t2T = 
   fmap (M.insert (2,'A')   $ BCT (Platform,EnvStays,Platform) (oneO (TPsend,TOrb 'x' 1))  (one (Initiated  mytp,mkP True)))
   . fmap (M.insert (5,'A') $ BCT (Blank,EnvStays,Blank)       (oneO (TPget,TOrb 'x' 0)) (one (Completed  mytp,mkP True)))

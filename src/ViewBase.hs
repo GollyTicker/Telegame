@@ -59,13 +59,16 @@ instance {-# Overlapping #-} Block b => Show (TimePos,This b) where
 dot :: (c -> d) -> (a -> b -> c) -> a -> b -> d
 dot f g = \x y -> f (g x y)
 
+showTPosCompact :: TimePos -> String
+showTPosCompact (t,(x,y)) = concat [show t,",",show x,",",show y]
+
 instance Show PlayerAction where
   show  =
     runpa "<-" "->" "^" "^\\" "/^" "stay"
           (\o -> ("pick("++ show o++")")) (\o -> ("put("++ show o++")"))
           (show `dot` ThrowL) (show `dot` ThrowR) (show . NewTOs) show show
-          (\ch (ps,os) t ->
-            concat ["tp[",show ch,",",show t,"](",
+          (\ch (ps,os) ts td ->
+            concat ["tp[",show ch,"|",showTPosCompact ts,"->"++showTPosCompact td++"](",
                         intercalate " " $ toStrings ps ++ toStrings os,")"])
 
 instance Show PlayerT where

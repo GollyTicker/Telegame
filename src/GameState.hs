@@ -44,7 +44,7 @@ computeCHfromObs obs =
         
         -- the maximum time is either the time of the latest observation
         -- or the latest time referenced in a teleportation
-        maxT = max (maybe (-1) (fst.fst) $ M.maxViewWithKey obs) maxTeletime
+        maxT = 1 + max (maybe (-1) (fst.fst) $ M.maxViewWithKey obs) maxTeletime
         maximum' :: Foldable t => t Int -> Int
         maximum' = foldr max (-1)
         maxTeletime :: Int
@@ -55,7 +55,7 @@ computeCHfromObs obs =
         blockContent = maximum' . MS.map (maxDestTimePT . snd3) . bctps
         maxDestTimePT pat =
           runpat maxDestTimePA (\_ _ -> -1) maxDestTimePA (-1) pat
-        maxDestTimePA (Teleport _ _ t) = t
+        maxDestTimePA (Teleport _ _ ts td) = fst ts `max` fst td
         maxDestTimePA _ = -1
 ;
 
@@ -63,9 +63,10 @@ computeCHfromObs obs =
 1. create ConsHistory of maximal size
     size is equal to all maps size. we assume,
     that all maps are of same size.
-    time goes from t=0 to the maximal time mentioned.
-    This can be the maximal time observed - but
-    it can also be a higher time referenced in a teleportation.
+    time goes from t=0 to 1+(maximal time mentioned).
+    This can be the maximal time observed -
+    but it can also be a higher time referenced in a teleportation.
+    the 1+ is needed for contradictions check to ensure they don't fall out-of-bounds
   
 2. start at beginning and apply player actions one at a time
 
@@ -114,10 +115,11 @@ applyPWTr t ch0 pw = applypwObs (Proxy::Proxy BlockTr) pw addOpenObs addClosedOb
     addClosedObs = foldlWithKeyM (\pos bc -> addWhenConsistent (t,pos) bc) ch0 . sobservations
     addWhenConsistent :: TimePos -> BlockTr -> ConsHistory -> MayFail ConsHistory
     addWhenConsistent tpos bc ch =
-         (\x -> insertCHTr tpos x ch) <$>
-           atCHTr tpos (failPlayerObsOutOfBounds tpos ch)
-                (maybe (success bc) (\bc' -> if bc == bc' then success bc else failPlayObsContraHistory tpos bc bc'))
-                ch
+      do mybc  <- atCHTr tpos (failPlayerObsOutOfBounds tpos ch)
+                  (maybe (success bc) (\bc' -> if bc == bc' then success bc else failPlayObsContraHistory tpos bc bc'))
+                  ch
+         chNew <- adjustGlobalInfo mybc ch -- also add information learned from the player obs. e.g. that a tp happend.
+         return (insertCHTr tpos mybc chNew)
 ;
 
 failPlayObsContraHistory :: (Show a, Show b) => TimePos -> a -> b -> MayFail c
@@ -151,7 +153,7 @@ runChecks curr b ch =
       cc = interferesWithBlock curr b
   in  filter isContradiction $ selfconsistent b : 
         if S.null missing
-          then ccrun cc (flatten (chspace ch))
+          then ccrun cc (flatten (chspace ch)) (chglobal ch)
           else map (listFailReferenceOutOfBounds curr) . S.toList $ missing
 ;
 
@@ -202,8 +204,9 @@ foldlWithKeyM f z = foldM (flip $ uncurry f) z . M.toAscList
 defaultConsHistory :: (Time,Pos) -> ConsHistory
 defaultConsHistory (tmax,pmax) =
   CH {
-     chspace = M.fromList $ (\t -> (t,) $ default2DMap pmax (Nothing,Nothing) ) <$> [0..tmax]
-    ,chsize = (tmax,pmax)
+     chspace  = M.fromList $ (\t -> (t,) $ default2DMap pmax (Nothing,Nothing) ) <$> [0..tmax]
+    ,chsize   = (tmax,pmax)
+    ,chglobal = M.empty
   }
 
 default2DMap :: Pos -> a -> Space a
