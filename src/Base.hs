@@ -85,21 +85,21 @@ class Typeable a => Block a where
 -- during state and transition.
 -- using multisets for objects, as they can occur multiple times
 -- due to time-travel
-data BlockSt = BC { bcps :: MultiSet Player, bcos :: MultiSet PhyObj, bcenv :: EnvObj }
+data BlockSt = BC { bcps :: MultiSet Player, bcos :: MultiSet PhyObj, bcenv :: Env }
   deriving (Eq,Ord)
 ;
 
 newtype BC_Cons = BCC BlockSt
   deriving (Ord,Eq)
--- OneP Player | OneO PhyObj | Bgrd EnvObj
+-- OneP Player | OneO PhyObj | Bgrd Env
 -- => e.g. OneP p1 & OneP p1 & OneP p2 & Bgrd (Door 0 0) <=>
 -- BSCons MultiSet(p1,p1,p2) + Door 0 0 ==> ".P1. .P1. .P2. D00"
 ;
 
 data BCT_Cons =
   BCTC {
-    bctcInit :: Maybe EnvObj
-   ,bctcEnd  :: Maybe EnvObj
+    bctcInit :: Maybe Env
+   ,bctcEnd  :: Maybe Env
    ,bctcToFutrP :: MultiSet Player
    ,bctcToFutrO :: MultiSet PhyObj
    ,bctcFromPastP :: MultiSet Player
@@ -107,7 +107,7 @@ data BCT_Cons =
 } deriving (Eq,Ord)
 
 data BlockTr = BCT {
-    bctenv  :: (EnvObj,EnvT,EnvObj) -- old env, environment change, new env (possibly same)
+    bctenv  :: (Env,EnvT,Env) -- old env, environment change, new env (possibly same)
    ,bctos   :: M.Map PhyObj (MultiSet PhyObjT) -- object motion. since objects can be multiple, each object is identified with a multiset of motions
    ,bctps   :: MultiSet (Player,PlayerT,Player) -- player before -> action -> player after
   }
@@ -192,7 +192,7 @@ data PhyObj = TOrb Char Int {- identifier, int is 0 or 1 -}
             | Key
   deriving (Ord,Eq,Data,Typeable)
 
-data EnvObj = Door { dneeds :: Int, dhas :: Int } {- # keys needed, # keys inside. both have to be <=9 -}
+data Env = Door { dneeds :: Int, dhas :: Int } {- # keys needed, # keys inside. both have to be <=9 -}
   | Solid
   | Platform -- platform below current block
   | Blank
@@ -201,7 +201,7 @@ data EnvObj = Door { dneeds :: Int, dhas :: Int } {- # keys needed, # keys insid
       mbDir :: Dir,
       mbMaxT :: Int,
       mbCurrT :: Int, -- both timers have to be <=99
-      mcBehind :: EnvObj
+      mcBehind :: Env
     } -}
   deriving (Eq, Ord,Data,Typeable)
 ;
@@ -385,7 +385,7 @@ data ConsHistory =
 -- The contraint matrix is indexed by
 --   [t= 0..maxTime] X {State, Transition} X [p = (0,0)..chsize]
 -- with the domain
---   (t,State,pos)       :: Maybe BlockSt  = Maybe (Set Player x Set PhyObj x EnvObj)
+--   (t,State,pos)       :: Maybe BlockSt  = Maybe (Set Player x Set PhyObj x Env)
 --   (t,Transition,pos)  :: Maybe BlockTr for the transition starting at t
 -- If the Maybe is Just, then the contents are uniquely determined.
 -- If the Maybe is Nothing, then it is Unkown.

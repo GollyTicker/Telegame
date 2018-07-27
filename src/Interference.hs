@@ -79,7 +79,7 @@ deriving instance Data GameState
 deriving instance Typeable GameState
 
 
-envPermeable :: EnvObj -> Bool
+envPermeable :: Env -> Bool
 envPermeable Solid = False
 envPermeable _ = True
 
@@ -91,7 +91,7 @@ envStandableIn _ = False
 envTPermeable :: EnvT -> Bool
 envTPermeable _ = True
 
-envStandable :: EnvObj -> Bool
+envStandable :: Env -> Bool
 envStandable Solid = True
 envStandable _ = False
 
@@ -196,7 +196,7 @@ phyObjInterferesWith curr o =
 validObjAction (TOrb _ _) _act = True
 validObjAction _           act = act `notElem` [TPsend,TPget]
 
-envInterferesWith :: TimePos -> EnvObj -> ConditionsChecker
+envInterferesWith :: TimePos -> Env -> ConditionsChecker
 envInterferesWith curr env =
   {- is grounded -}
   (if (case env of Door _ _ -> True; Switch _ -> True; _ -> False) then isGrounded curr env else alwaysOk)

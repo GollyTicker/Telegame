@@ -21,7 +21,7 @@ instance Show PhyObj where
   show (TOrb c i) = 't':c:show i
 ;
 
-instance Show EnvObj where
+instance Show Env where
   show (Door n h) = "D"++show n ++ show h
   show Solid = "S"
   show Blank = ""
@@ -114,7 +114,7 @@ instance Read PhyObj where
   readsPrec _ _str = []
 ;
 
-instance Read EnvObj where
+instance Read Env where
   readsPrec _ "S" = [(Solid,"")]
   readsPrec _ "_" = [(Platform,"")]
   readsPrec _ "" = [(Blank,"")]
