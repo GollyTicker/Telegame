@@ -44,6 +44,18 @@ instance {-# Overlapping #-} Show TimePos where
   show (t,pos) = "[t = " ++ show t ++ ", pos = " ++ show pos ++ "]"
 ;
 
+instance Show (This BlockSt) where
+  show _ = "state"
+;
+
+instance Show (This BlockTr) where
+  show _ = "trans"
+
+instance {-# Overlapping #-} Block b => Show (TimePos,This b) where
+  show ((t,pos),ths) = "[t = " ++ show t ++ ", pos = " ++ show pos ++ " in " ++ show ths++"]"
+;
+
+
 dot :: (c -> d) -> (a -> b -> c) -> a -> b -> d
 dot f g = \x y -> f (g x y)
 

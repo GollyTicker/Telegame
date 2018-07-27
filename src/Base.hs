@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeFamilies, DeriveFunctor,DeriveDataTypeable #-}
+{-# LANGUAGE TypeFamilies, DeriveFunctor,DeriveDataTypeable,FlexibleContexts #-}
 {-# OPTIONS_GHC -Wall #-}
 
 module Base
@@ -20,6 +20,9 @@ Main todo:
     especially, I want to "prove" properties between functions. and this is
     not immediately possible without existentials
   . add more properties and tests for quickcheck
+. look at contradiction messages for the example and improve them.
+  . make hunit tests? that would be nice
+. add information, on whether a TimePos points to a St or Tr. use this while displaying contradiction
 
 versions and packages:
 . Haskell Platform Core. 8.4.3
@@ -65,12 +68,16 @@ eqById :: Player -> Player -> Bool
 eqById (Player s {-_t-} _ _) (Player s' {-_t'-} _ _) = s == s' -- && _t == _t'
 
 type PWorld a = OpenObs a
-class Typeable a => Block a where
+class (Show (This a),Typeable a) => Block a where
   type OpenObs a
   type ClosedObs a
   type Cons a
   type Antcpt a
+  type Other a
+  data This a
+  this :: This a
   isState :: Proxy a -> Bool {- True for BlockSt, False for BlockTr -}
+  getter :: This a -> Field -> Maybe a
   on_standable :: a -> Bool
   in_standable :: a -> Bool
   permeable :: Show b => TimePos -> b -> a -> CondRes
@@ -293,9 +300,11 @@ runpa ml mr ju jul jur na pk pt tl tr newto ueo uem tele pa =
 data PlayerT =
   Initiated PlayerAction
   -- | Intermediate PlayerAction -- e.g. MoveR for finish moving to right (before falling down now). obsolete due to Motion
-  | Motion Dir Dir -- incoming and outgoing motion. e.g. move-away or jump.
-  | Completed PlayerAction -- e.g. MoveR for arriving at the right block. landing from a jump without falling is also counted here
-      -- if a non-moving action is executed (e.g. toogle switch),then Completed is used.
+  | Motion Dir Dir -- motion: incoming from and outgoing to
+  {- possible values. L D , D R, D D, U D and their left-right symmetrical variants -}
+  | Completed PlayerAction -- e.g. MoveR for arriving at the right block (an no subsq. falling)
+      -- landing from a jump without falling is also counted here.
+      -- if a non-moving action is executed (e.g. toogle switch),then always Completed is used.
   | CompletedFalling -- completed falling is used, if the player finished their turn
   deriving (Eq,Ord)  -- on a different block than what ne would expect from the player action
 ;
