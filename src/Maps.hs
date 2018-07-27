@@ -87,8 +87,8 @@ map2_P0_t3 = Specific 3 (mkP True) (7,'D') $ fromString
     \S,S,S,S,S,  S,   S,S"
 ;
 map2_P0_t3T =
-  fmap (M.insert (6,'A')   $ BCT (Blank,EnvStays,Blank) M.empty (one (Initiated MoveR,mkP True)))
-  . fmap (M.insert (7,'A') $ BCT (Door 0 0,EnvStays,Door 0 0) M.empty (one (Completed MoveR,mkP True)))
+  fmap (M.insert (6,'A')   $ BCT (Door 0 0,EnvStays,Door 0 0) M.empty (one (Initiated MoveR,mkP True)))
+  . fmap (M.insert (7,'A') $ BCT (Blank,EnvStays,Blank) M.empty (one (Completed MoveR,mkP True)))
   $ noAction map2_P0_t3
 
 map2_P0_t4 = Specific 4 (mkP True) (7,'D') $ fromString

@@ -15,7 +15,7 @@ import qualified Data.MultiSet as MS
 -- import Data.Foldable
 -- import Data.Maybe (maybeToList)
 import Control.Monad (foldM)
-import Control.Arrow (first,(***))
+import Control.Arrow (first,second,(***))
 -- first: apply function on fst-element in tuple; f *** g = \(a,b) -> (f a,g b)
 
 -- import Debug.Trace
@@ -81,35 +81,47 @@ concrete such that every element is uniquely defined.
 -- applies each observation one after a time.
 -- halts at the firstcontradiction that occurred
 -- if everything is consistent, then a ConsHistory is returned
-applyAllObservations :: TotalObservations ->
-                        ConsHistory -> MayFail ConsHistory
+applyAllObservations :: TotalObservations -> ConsHistory -> MayFail ConsHistory
 applyAllObservations mp ch0 = foldlWithKeyM f ch0 mp
   where
     f :: Time -> (S.Set (PWorld BlockSt), S.Set (PWorld BlockTr)) -> ConsHistory -> MayFail ConsHistory
-    f t (pws,pwts) ch = do ch2 <- foldM (applyPW  t) ch  (S.toList pws )
-                           foldM (applyPWT t) ch2 (S.toList pwts)
+    f t (pws,pwts) ch =
+      do ch2 <- foldM (applyPWSt t) ch  (S.toList pws )
+         foldM        (applyPWTr t) ch2 (S.toList pwts)
 ;
 
-applyPW :: Int -> ConsHistory -> PWorld BlockSt -> MayFail ConsHistory
-applyPW t ch0 pw = applypwObs (Proxy::Proxy BlockSt) pw addOpenObs addClosedObs
+-- assumes, that ch is consistent already.
+-- it is inconcsistent, if (t,pos) is out-of-bounds
+-- it is inconcsistent, if there is already a differing Just value at (t,pos)
+-- it is consistent, if there is a Nothing at (t,pos) and
+-- the network stays consistent after adding it.
+applyPWSt :: Int -> ConsHistory -> PWorld BlockSt -> MayFail ConsHistory
+applyPWSt t ch0 pw = applypwObs (Proxy::Proxy BlockSt) pw addOpenObs addClosedObs
   where
     addOpenObs = foldlWithKeyM (\pos bc -> addWhenConsistent (t,pos) bc) ch0 . sobservations
     addClosedObs x = let (pos,bc) = sobservations x in addWhenConsistent (t,pos) bc ch0
     addWhenConsistent :: TimePos -> BlockSt -> ConsHistory -> MayFail ConsHistory
-    addWhenConsistent tpos bc ch = {- check blockcontent(T) player-observation for self-consistency. though this should not happen in the first place -}
-         (\x -> insertCH tpos x ch) <$>
-           atCH tpos (failPlayerObsOutOfBounds tpos ch)
+    addWhenConsistent tpos bc ch =
+         (\x -> insertCHSt tpos x ch) <$>
+           atCHSt tpos (failPlayerObsOutOfBounds tpos ch)
                 (maybe (success bc) (\bc' -> if bc == bc' then success bc else failPlayObsContraHistory tpos bc bc'))
                 ch
-  -- assumes, that ch is consistent already.
-  -- it is inconcsistent, if (t,pos) is out-of-bounds
-  -- it is inconcsistent, if there is already a differing Just value at (t,pos)
-  -- it is consistent, if there is a Nothing at (t,pos) and
-  -- the network stays consistent after adding it.
+;         -- these two functions are difficult to refactor together...
+applyPWTr :: Int -> ConsHistory -> PWorld BlockTr -> MayFail ConsHistory
+applyPWTr t ch0 pw = applypwObs (Proxy::Proxy BlockTr) pw addOpenObs addClosedObs
+  where
+    addOpenObs = foldlWithKeyM (\pos bc -> addWhenConsistent (t,pos) bc) ch0 . sobservations
+    addClosedObs = foldlWithKeyM (\pos bc -> addWhenConsistent (t,pos) bc) ch0 . sobservations
+    addWhenConsistent :: TimePos -> BlockTr -> ConsHistory -> MayFail ConsHistory
+    addWhenConsistent tpos bc ch =
+         (\x -> insertCHTr tpos x ch) <$>
+           atCHTr tpos (failPlayerObsOutOfBounds tpos ch)
+                (maybe (success bc) (\bc' -> if bc == bc' then success bc else failPlayObsContraHistory tpos bc bc'))
+                ch
 ;
 
-failPlayObsContraHistory :: TimePos -> BlockSt -> BlockSt -> MayFail a
-failPlayObsContraHistory tpos bc bc' = failing $ "applyPW: players observation contradicts with established history at "++show tpos ++". observed: "++show bc ++ ", established: " ++ show bc'
+failPlayObsContraHistory :: (Show a, Show b) => TimePos -> a -> b -> MayFail c
+failPlayObsContraHistory tpos b b' = failing $ "applyPW: players observation contradicts with established history at "++show tpos ++". observed: "++show b ++ ", established: " ++ show b'
 
 failPlayerObsOutOfBounds :: TimePos -> ConsHistory -> MayFail a
 failPlayerObsOutOfBounds tpos ch = failing $ "applyPW[unusual]: players observation "++show tpos++" is out-of-bounds in history. history size = "++ show (chsize ch) ++ ", with ch:\n" ++ show ch
@@ -152,8 +164,11 @@ findMissingIndices ks = (ks S.\\) . M.keysSet . flatten . chspace
 listFailReferenceOutOfBounds :: TimePos -> TimePos -> CondRes
 listFailReferenceOutOfBounds curr other = show curr ++ " references out-of-bounds "++show other
 
-atCH :: TimePos -> a {- out of bounds -} -> (Maybe BlockSt -> a) -> ConsHistory -> a
-atCH tpos z f = fst . atCHboth tpos z f (const (error "atCH: this cannot happen"))
+atCHSt :: TimePos -> a {- out of bounds -} -> (Maybe BlockSt -> a) -> ConsHistory -> a
+atCHSt tpos z f = fst . atCHboth tpos z f (const (error "atCH[1]: this cannot happen"))
+
+atCHTr :: TimePos -> a {- out of bounds -} -> (Maybe BlockTr -> a) -> ConsHistory -> a
+atCHTr tpos z f = snd . atCHboth tpos z (const (error "atCH[2]: this cannot happen")) f
 
 -- combine two accesses into one
 atCHboth :: TimePos -> a {- out of bounds -} -> (Maybe BlockSt -> a) -> (Maybe BlockTr -> a) -> ConsHistory -> (a,a)
@@ -161,11 +176,12 @@ atCHboth (t,pos) z f g = maybe (z,z) (f *** g) . (>>= M.lookup pos) . M.lookup t
 
 -- inserts the blockContent into the cons-history.
 -- assumes, that time-pos is not out-of-bounds
-insertCH :: TimePos -> BlockSt -> ConsHistory -> ConsHistory
-insertCH (t,pos) bc ch = ch { chspace = M.adjust (M.adjust (first (const (Just bc))) pos) t (chspace ch)}
+insertCHSt :: TimePos -> BlockSt -> ConsHistory -> ConsHistory
+insertCHSt (t,pos) b ch = ch { chspace = M.adjust (M.adjust (first  (const (Just b))) pos) t (chspace ch)}
 
-applyPWT :: Int -> ConsHistory -> PWorld BlockTr -> MayFail ConsHistory
-applyPWT _t _ch _pwt = success _ch -- TODO: implement applyPWT
+insertCHTr :: TimePos -> BlockTr -> ConsHistory -> ConsHistory
+insertCHTr (t,pos) b ch = ch { chspace = M.adjust (M.adjust (second (const (Just b))) pos) t (chspace ch)}
+
 
 {- MAIN FUNCTION: concreteHistory. should use runCondChecker -}
 -- specializes all Unkowns to a unique history

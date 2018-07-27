@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeFamilies, DeriveFunctor #-}
+{-# LANGUAGE TypeFamilies, DeriveFunctor,DeriveDataTypeable #-}
 {-# OPTIONS_GHC -Wall #-}
 
 module Base
@@ -46,6 +46,7 @@ Liquid Haskell:
 -}
 
 import Data.Proxy
+import Data.Data
 import qualified Data.Set as S
 import Data.MultiSet (MultiSet)
 import qualified Data.Map as M
@@ -64,7 +65,7 @@ eqById :: Player -> Player -> Bool
 eqById (Player s {-_t-} _ _) (Player s' {-_t'-} _ _) = s == s' -- && _t == _t'
 
 type PWorld a = OpenObs a
-class Block a where
+class Typeable a => Block a where
   type OpenObs a
   type ClosedObs a
   type Cons a
@@ -167,6 +168,11 @@ data Specific a =
  deriving (Eq, Ord, Functor)
 ;
 
+-- motion from directon to direction. e.g. Motion R D means, that it came from right and fell down at our block
+-- not all possible values are legitimate. e.g. Motiong L U and Motion L L are invalid.
+data Dir = L | U | R |D
+  deriving (Eq,Ord,Data,Typeable)
+  
 data PhyObjT = NoMotionT | MotionT Dir Dir
   | LandFrom Dir -- land from throws. Dir is L, R or U
   | IntoInventory {- also counting Door or switch -}
@@ -174,11 +180,7 @@ data PhyObjT = NoMotionT | MotionT Dir Dir
   | TParrive Char | TPexit Char -- when objects lying on ground are sent though tp.
   | TPsend | TPget -- teleorbs, when they are on ground, have TPsend for the
   -- source and TPget for the destination orb. both get destroyed then.
-  deriving (Eq,Ord)
--- motion from directon to direction. e.g. Motion R D means, that it came from right and fell down at our block
--- not all possible values are legitimate. e.g. Motiong L U and Motion L L are invalid.
-data Dir = L | U | R |D
-  deriving (Eq,Ord)
+  deriving (Eq,Ord,Data,Typeable)
 
 rundir :: a -> a -> a -> a -> Dir -> a
 rundir l u r d dir = case dir of L -> l; U -> u; R -> r; D -> d
@@ -188,7 +190,7 @@ invDir = rundir R D L U
 
 data PhyObj = TOrb Char Int {- identifier, int is 0 or 1 -}
             | Key
-  deriving (Ord,Eq)
+  deriving (Ord,Eq,Data,Typeable)
 
 data EnvObj = Door { dneeds :: Int, dhas :: Int } {- # keys needed, # keys inside. both have to be <=9 -}
   | Solid
@@ -201,11 +203,20 @@ data EnvObj = Door { dneeds :: Int, dhas :: Int } {- # keys needed, # keys insid
       mbCurrT :: Int, -- both timers have to be <=99
       mcBehind :: EnvObj
     } -}
-  deriving (Eq, Ord)
+  deriving (Eq, Ord,Data,Typeable)
 ;
 
+
+data EAOnce = PressAndHold -- | more options later...
+  deriving (Eq,Ord,Data,Typeable)
+data EARep = TraverseDoor
+  | InsertKey
+  | TakeKey
+  | ToogleSwitch
+  deriving (Eq,Ord,Data,Typeable)
+;
 data EnvT = EnvStays | EnvUsedOnce EAOnce | EnvUsedMult [EARep]
-  deriving (Eq,Ord)
+  deriving (Eq,Ord,Data,Typeable)
 
 -- TODO: integrate PlayerActionTotal...
 data PlayerTotal =
@@ -219,7 +230,7 @@ data PlayerTotal =
         -- both corresponding to the ancitipated change of something before or after the turn and movement.
         -- during closed eyes, the non-interfering prediction is shown as base for anticipation
         -- AnticipationT describes anticipation of transitions
-  }
+  } -- deriving (Data,Typeable)
 -- the order of 'execution' is the order of the records in the declaration
 
 -- type Anticipation = Space (Maybe BlockSt)
@@ -273,15 +284,6 @@ runpa ml mr ju jul jur na pk pt tl tr newto ueo uem tele pa =
              UseEnvOnce eao -> ueo eao
              UseEnvMult eam -> uem eam
              Teleport ch os t -> tele ch os t
-;
-
-data EAOnce = PressAndHold -- | more options later...
-  deriving (Eq,Ord)
-data EARep = TraverseDoor
-  | InsertKey
-  | TakeKey
-  | ToogleSwitch
-  deriving (Eq,Ord)
 ;
 
 
