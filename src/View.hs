@@ -5,6 +5,7 @@ module View where
 
 import Base
 import Data.Proxy
+import ViewBase
 import Interference()
 import Data.List (intercalate,transpose)
 import qualified Data.Map as M
@@ -12,34 +13,12 @@ import qualified Data.Set as S
 import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MS
 
-instance Show EnvObj where
-  show (Door n h) = "D"++show n ++ show h
-  show Solid = "S"
-  show Blank = ""
-  show Platform = "_"
-  show (Switch b) = "sw"++show (toEnum . fromEnum $ b :: Int)
-{-show (MovingBlock dir tm tc behind) =
-    "m"++show dir++show0padded tm++show0padded tc++show behind
-    where show0padded n
-            | n <= 9 = '0':show n
-            | otherwise = show n -}
-;
-
-split :: (a -> Bool) -> [a] -> [[a]]
-split f s = foldr (\x (a:as) -> if f x then []:(a:as) else (x:a):as) [[]] s
-
 padspaces :: [[String]] -> [[String]]
 padspaces xss =
   let n = max 1 . maximum . map length
       f txs x = replicate (n txs - length x) ' ' ++ x
   in  transpose $ map (\txs -> map (f txs) txs) (transpose xss)
 
-toStrings:: Show a => MultiSet a -> [String]
-toStrings = map show . MS.elems
-
-instance {-# Overlapping #-} Show TimePos where
-  show (t,pos) = "[t = " ++ show t ++ ", pos = " ++ show pos ++ "]"
-  
 -- enclosing encloses each string in the list of strings
 -- with z and z' and then joins with the results
 enclosing :: String -> String -> [String] -> String
@@ -85,49 +64,6 @@ instance {-# Overlapping #-} Show (Maybe BlockTr) where -- more compact view of 
   show = maybe "*" show
 ;
 
-dot :: (c -> d) -> (a -> b -> c) -> a -> b -> d
-dot f g = \x y -> f (g x y)
-
-instance Show PlayerAction where
-  show  =
-    runpa "<-" "->" "^" "^\\" "/^" "stay"
-          (\o -> ("pick("++ show o++")")) (\o -> ("put("++ show o++")"))
-          (show `dot` ThrowL) (show `dot` ThrowR) (show . NewTOs) show show
-          (\ch (ps,os) t ->
-            concat ["tp[",show ch,",",show t,"](",
-                        intercalate " " $ toStrings ps ++ toStrings os,")"])
-
-instance Show PlayerT where
-  show = runpat (("Init "++). show) -- (("Inter "++). show)
-                (\x y -> concat [show (invDir x)," then ",show y])
-                (("Cmpl "++). show) "CmplFall "
-;
-instance Show PhyObjT where
-  show NoMotionT = "stay"
-  show (MotionT inc out) = show (invDir inc) ++ " then " ++ show out
-  show (TParrive c) = "tpv("++show c++")"
-  show (TPexit c) = "tp^("++show c++")"
-  show TPsend = "tpx^"
-  show TPget = "tpxv"
-  show (LandFrom dir) = "\\"++show dir++"/"
-  show IntoInventory = "(^)"
-  show OntoGround    = "(v)"
-;
-instance Show Dir where
-  show = rundir "<" "^" ">" "v"
-;
-
-instance Read Dir where
-  readsPrec _ str = case str of
-                      "<" -> [(L,"")]
-                      ">" -> [(R,"")]
-                      "^" -> [(U,"")]
-                      "v" -> [(D,"")]
-                      _   -> []
-;
-
-deriving instance Show EARep
-deriving instance Show EAOnce
 
 show2DMap :: Show a => Space a -> Pos -> String
 show2DMap mp (sx,sy) =
@@ -191,28 +127,6 @@ indent n str = tail $ concat . map f . map (:[]) $ "\n"++str
   where f "\n" = "\n" ++ replicate n ' '
         f s    = s
 
-instance Read Player where
-  readsPrec _ ('.':s') =
-    if safeLast s' == Just '.' 
-      then
-        let s = init s'
-            opened = head s /= '<'
-            inv 
-              | length (filter (=='(') s) > 0 = MS.fromList . map read . split (=='+') . reverse . tail . reverse . tail . dropWhile (/='(') $ s
-              | otherwise = MS.empty
-            nameAgeStr = filter (\x -> notElem x "<>") . takeWhile (/='(') $ s
-            -- ageStr = takeWhile (\x -> elem x "0123456789") . reverse $ nameAgeStr
-            name = nameAgeStr -- take (length nameAgeStr - length ageStr) nameAgeStr
-        in  [(Player name {-(read ageStr)-} opened inv,"")]
-    else []
-  readsPrec _ _ = []
-
-instance Read PhyObj where
-  readsPrec _ "k" = [(Key,"")]
-  readsPrec _ ['t',c,i] = [(TOrb c (read $ i:[]),"")]
-  readsPrec _ _str = []
-;
-
 fromString :: String -> Space BlockSt
 fromString = fromNestedList . map (split (==',')) . lines
 
@@ -220,19 +134,6 @@ fromNestedList :: [[String]] -> Space BlockSt
 fromNestedList =
   M.fromList . concat . zipWith (\y -> zipWith (f y) [0::Int ..]) ['A'..]
   where f y x s = ((x,y),read s)
-
-instance Read EnvObj where
-  readsPrec _ "S" = [(Solid,"")]
-  readsPrec _ "_" = [(Platform,"")]
-  readsPrec _ "" = [(Blank,"")]
-  readsPrec _ " " = [(Blank,"")]
-  readsPrec _ ['D',n,h] = [(Door (read (n:"")) (read (h:"")),"")]
-  readsPrec _ "sw0" = [(Switch False,"")]
-  readsPrec _ "sw1" = [(Switch True,"")]
-{-readsPrec _ ('m':dir:tm2:tm1:tc2:tc1:rest) =
-    [(MovingBlock (read (dir:"")) (read (tm2:tm1:"")) (read (tc2:tc1:"")) (read rest),"")] -}
-  readsPrec _ _str = [] -- error $ "readEnv: Could not parse " ++ xs
-
 
 instance Read BlockSt where
   readsPrec _ "" = [(BC MS.empty MS.empty Blank,"")]
@@ -247,10 +148,6 @@ instance Read BlockSt where
         os = MS.fromList . map fst . concatMap (readsPrec n) $ ws
     in  [(BC ps os e,"")]
 ;
-
-safeLast :: [a] -> Maybe a
-safeLast [] = Nothing
-safeLast xs = Just $ last xs
 
 showSet :: Show a => S.Set a -> String
 showSet = intercalate "\n" . map show . S.toList
