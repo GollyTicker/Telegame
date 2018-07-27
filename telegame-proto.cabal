@@ -22,7 +22,7 @@ executable telegame-proto
                        QuickCheck,
                        multiset >= 0.3.4 && < 1
                        -- liquidhaskell >= 0.8.2.4 && < 1
-  other-modules:       Base, Interference, GameState, View, Maps
+  other-modules:       Base, ViewBase, Interference, GameState, View, Maps
 
 Test-Suite tests-basic
   hs-source-dirs:      src
@@ -34,4 +34,4 @@ Test-Suite tests-basic
                        QuickCheck,
                        multiset >= 0.3.4 && < 1
                        -- liquidhaskell >= 0.8.2.4 && < 1
-  other-modules:       Base, Interference, GameState, View
+  other-modules:       Base, ViewBase, Interference, GameState, View
