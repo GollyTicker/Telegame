@@ -12,6 +12,7 @@ import Maps hiding (main)
 import qualified Data.Map as M
 import System.IO.Unsafe
 import qualified Data.MultiSet as MS
+import GameState
 -- run with:
 {-
 hastec --output-html HasteWorld.hs && xdg-open HasteWorld.html
@@ -21,7 +22,7 @@ tell :: Show a => a -> a
 tell x = (unsafePerformIO $ newTextElem ("Trace:"++ show x++"  ") >>= appendChild documentBody) `seq` x
 
 -- testing string output
-myoutput = show $ map2_GS
+myoutput = show (map2_GS) ++ "\n\nWith contradictions: " ++ show (contradictions $ gsch map2_GS)
 
 main = do
 {-
