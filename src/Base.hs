@@ -23,6 +23,9 @@ Main todo:
 . look at contradiction messages for the example and improve them.
   . make hunit tests? that would be nice
 . add information, on whether a TimePos points to a St or Tr. use this while displaying contradiction
+. use comonads abstraction or parsing for the condition checks?
+. use blaze to generate the html? https://jaspervdj.be/blaze/tutorial.html
+. 
 
 count code size: cloc --exclude-ext=html,css src/
 
