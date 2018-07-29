@@ -13,6 +13,7 @@ module Base
 Main todo:
 . implement game state tansition function
 . clean up and tidy and refactor
+. INTEGRATE stack into Haste. unified and reproduceable build
 . use a good haskell IDE to make types support writing even more?
   https://github.com/haskell/haskell-ide-engine
 . use refinement types with liquid haskell to make better compile time assurance
@@ -22,10 +23,16 @@ Main todo:
   . add more properties and tests for quickcheck
 . look at contradiction messages for the example and improve them.
   . make hunit tests? that would be nice
-. add information, on whether a TimePos points to a St or Tr. use this while displaying contradiction
 . use comonads abstraction or parsing for the condition checks?
 . use blaze to generate the html? https://jaspervdj.be/blaze/tutorial.html
-. 
+. great idea for touch-input:
+  . when mobile browser, make only static screens rather than
+    scrollable screen. then allow for touch-gestures to more easily input
+    actions. e.g. touch on a player to see info. when that player is
+    selected, a swipe on the screen which goes ^ and > will be parsed as
+    JumpUR. then it will be executed immediately, if all other infos are given.
+    one could also use a dragable circle which makes it clearer, which action
+    one is inputting.
 
 count code size: cloc --exclude-ext=html,css src/
 
@@ -425,19 +432,67 @@ data ConsHistory =
 
 
 type CondRes = String -- "" means satisfied. otherwise contradiction with description.
--- BIG NEXT TODO:
--- integrate with Cons BlockSt and Cons BlockTr.
--- make them so strong/expressive, that they can over all of what we need here.
--- perhaps, use both Cons to implement a new ConsHistory.
--- one which is made of minimal elements only. it only grows,
--- when condition-requirements from other places are checked.
--- new featureswill only be added, once they are needed.s
--- Choice (e.g. on standable vs in standable) will try to first
--- make any1 of them concrete and see, whether one can stay on them.
--- otherwise, the choice is deferred at a worse case of exp. time.
--- practically speaking, ground-check cannot become the feared exp-blowup,
--- because even in closed eyes, the current block is visible
--- and therefore, the requirement is always given or deferred to the lower block.
+-- TODO:
+{-
+
+Distinction:
+1. PlayerActions. each player action, applied on a CondHistory
+   can only spawn observations in the (St,Tr,St) surrounding
+   that action.
+
+2. PlayerObservations (like [? S]). they only
+   limit what actually already happend. steps in immediate future
+   are not observed yet. only current step (St or Tr) is observed.
+   cannot create contradictions. just observations.
+   contradicting observations (even in the same player) are only
+   discovered later.
+   IMP. REALIZATION:
+   conditions on interacted with elements from current time are enforced.
+   e.g. reduced from blurred prediction to actual observation.
+   as mentioned above, if they are in a different field, then it's only a
+   partial observation.
+   TODO: perhaps change this? maybe let them only observe the things they
+   actually interact with. thus, they are also closed to their current field.
+   makes understanding this more intuitive.
+   However, this may only enforce some level of 'careful walking' for
+   interactions form future.
+   The implementation will make use of Interference.hs to get the
+   set of conditions, which need to be observed in the current time.
+   
+      Partial observations might be displayed as:
+      ?,  P,?
+      ?,? S,?
+      denoting, that the player knows, that there is a S block below him
+      but doesn't know it's other contents.
+   
+   Thus we need to change the semantics of playerObservations
+   to encode full and partial observations. actually, partial
+   observations suffice where a full observation is just a large set
+   of partial observations + a flag to denote, that everything was observed.
+   
+3. for each object -> get countable and constructable constraints
+   on self-block and other blocks and global information.
+   these don't force an unknown to become known.
+
+4. for each checkable (block + global info) collect all of the constraints
+   from previous step and make ConsHistory a bit more concrete.
+   contradictions are discovered here.
+      integrate with Cons BlockSt and Cons BlockTr.
+      make them so strong/expressive, that they can over all of what we need here.
+      perhaps, use both Cons to implement a new ConsHistory.
+      one which is made of minimal elements only. it only grows,
+      when condition-requirements from other places are checked.
+      new featureswill only be added, once they are needed.s
+      Choice (e.g. on standable vs in standable) will try to first
+      make any1 of them concrete and see, whether one can stay on them.
+      otherwise, the choice is deferred at a worse case of exp. time.
+      practically speaking, ground-check cannot become the feared exp-blowup,
+      because even in closed eyes, the current block is visible
+      and therefore, the requirement is always given or deferred to the lower block.
+
+5. End of Level: start from t=0 and on each step
+   concretize the CondHistory to a unique ConsHistory.
+-}
 data ConditionsChecker =
   CC {
     ccneeds :: S.Set TimePos
