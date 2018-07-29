@@ -425,6 +425,19 @@ data ConsHistory =
 
 
 type CondRes = String -- "" means satisfied. otherwise contradiction with description.
+-- BIG NEXT TODO:
+-- integrate with Cons BlockSt and Cons BlockTr.
+-- make them so strong/expressive, that they can over all of what we need here.
+-- perhaps, use both Cons to implement a new ConsHistory.
+-- one which is made of minimal elements only. it only grows,
+-- when condition-requirements from other places are checked.
+-- new featureswill only be added, once they are needed.s
+-- Choice (e.g. on standable vs in standable) will try to first
+-- make any1 of them concrete and see, whether one can stay on them.
+-- otherwise, the choice is deferred at a worse case of exp. time.
+-- practically speaking, ground-check cannot become the feared exp-blowup,
+-- because even in closed eyes, the current block is visible
+-- and therefore, the requirement is always given or deferred to the lower block.
 data ConditionsChecker =
   CC {
     ccneeds :: S.Set TimePos
