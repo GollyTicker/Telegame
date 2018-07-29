@@ -29,3 +29,7 @@ cabal.project.local
 
 # liquid
 src/.liquid
+
+# Telegame
+src/upload.sh
+

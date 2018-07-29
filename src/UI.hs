@@ -20,7 +20,8 @@ svgNS = "http://www.w3.org/2000/svg"
 
 -- run with:
 {-
-$ hastec --output-html UI.hs && xdg-open UI.hmtl
+in folder src:
+$ hastec --output-html UI.hs && ./upload.sh && xdg-open "https://n.ethz.ch/~ssahoo/Telegame/UI.html"
 
 What to do, when you need some Haste functionality:
 . Is it mentioned in the ovewview? https://github.com/valderman/haste-compiler
@@ -93,7 +94,7 @@ main = do
     appendChild documentBody svgEl
     
     onEvent r Click $
-      ( \_ -> set r [attr "fill" =: rgbStr (rgb 0.1 0.6 1)] )
+      ( \_ -> set r [attr "fill" =: rgbStr (rgb 0.1 0.9 0.4)] )
     
     runCanvasExample
 ;
