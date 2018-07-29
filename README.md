@@ -16,6 +16,5 @@ Build the project and it's dependencies.
 
 Interactive mode:
 
-  stack ghci
-
+    stack ghci src/Maps.hs
 
