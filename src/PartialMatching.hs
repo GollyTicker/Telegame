@@ -6,6 +6,8 @@ module PartialMatching where
 -- for inference and condition-checking for Telegame.
 
 import Data.Maybe
+import Control.Applicative
+import Control.Monad
 
 data Sample = A String Int | B [Maybe C] deriving (Show,Eq)
 data C = C Int | Q deriving (Show,Eq)
@@ -33,13 +35,6 @@ and (P f x rx) (P g y ry) =
 ;
 -}
 
-class Show a => Cnstr a where
-  least :: a
-  combine :: a -> a -> Maybe a
-  -- tries to combine both, and captures boths conditions.
-  -- if fails, then return Nothing.
-;
-
 type Res = String
 
 -- M
@@ -60,22 +55,82 @@ satisfiedBy = undefined
 
 -- C
 -- specifically for the minimal inference
-constructMinimal :: P c r a -> c
+constructMinimal :: (a->c) -> a -> r -> c
 constructMinimal = undefined {- use type-class to fill in the gap. -}
 
+evalMergeC :: (Eq c,Cnstr a) => P c r a -> c -> Either r c
+evalMergeC = undefined -- do-and positive result from right if it works
+
+evalMergeACAR :: (Eq c,Cnstr a) => P c r a -> (a->c) -> a -> r -> Either r c
+evalMergeACAR = undefined -- do-and leaf result from right if it works
+
+class Show a => Cnstr a where
+  least :: a
+  combine :: a -> a -> Maybe a
+  -- tries to combine both, and captures boths conditions.
+  -- if fails, then return Nothing.
+;
+
 eval :: (Eq c,Cnstr a) => P c r a -> Either r c
-eval = undefined
+eval p = undefined -- case p of
+--  Always c -> Right c
+--  P c a r  -> c a -- construct minimal example
+--  And p p' -> -- fail, if p or p' fails. otherwise try to merge results
+--    eval p >> eval p' >> undefined {- try merge a's -}
+  {-And p (Always c)  -> evalMergeC p c
+  And p (P c a r)    -> evalMergeACAR p c a r
+  And p (And p2 p3) -> eval p2
+  And p (Or  pa pb) -> _ -- <$> evalMergeACAR p pa <*> evalMergeACAR p pb
+  -}
+{-    case x `combine` y of
+      Nothing -> Fail $ "contradicting stories: " ++ show x ++ " vs " ++ show y
+      Just  z -> if f1 z == f2 z then Right c
+                 
+    if (f1 least /= f2 least) then Fail "context mismatch"
+      else 
+  -}
 -- evaluates and and or and always.
 -- on contradiction, returns first, or succeedes with a minimal construction
 
 -- ACHIVED 50%: and and or
 data P c r a where
-  {- backtransformation, constrained value, contradiction if failed -}
-  P   :: Cnstr a => (a -> c) -> a       -> r -> P c r a
   Always ::                                c -> P c r a
+  {- makeFullyKnown-Function, minimally constrained value, contradiction if failed -}
+  P   :: Cnstr a => (a -> c) -> a       -> r -> P c r a
   And ::            P c r a  -> P c r a      -> P c r a
   Or  ::            P c r a  -> P c r a      -> P c r a
---
+;
+{-
+traverseP :: Monad f =>
+  (c -> z -> f z)
+  -> ((a->c) -> a -> r -> z -> f z)
+  -> (z -> z -> z -> f z)
+  -> (z -> z -> z -> f z)
+  -> P c r a -> z -> f z
+traverseP always p and or = go where
+  go myp z = case myp of
+    Always c -> always c z
+    P c a r  -> p c a r z
+    And p1 p2 -> go p1 z >>= \z1 -> go p1 z1 >>= \z2 -> and z1 z2 -- nesessary?
+    Or  p1 p2 -> go p1 z 
+;
+-}
+{-
+foldP :: Cnstr a =>
+  (c -> b)
+  -> ((a -> c) -> a -> r -> b)
+  -> (b -> b -> b)
+  -> (b -> b -> b)
+  -> P c r a -> b
+foldP always p and or = go where
+  go myp = case myp of
+    Always c -> always c
+    P c a r  -> p c a r
+    And p1 p2 -> and (go p1) (go p2)
+    Or  p1 p2 -> or  (go p1) (go p2)
+;
+-}
+
 --  Fail :: r -> P c r a. fail only comes during evaluation.
 -- ACHIVED: Nesting.
 ontopof :: (c -> c') -> P c r a -> P c' r a
