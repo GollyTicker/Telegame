@@ -35,6 +35,7 @@
   <script src="zingtouch.min.js"></script>
   <script>
     // Utils
+    let svgNS = "http://www.w3.org/2000/svg";
     var out = document.getElementById("out");
     // tell takes an array of stirng and writes them
     // one per line into the document. overwrites previous tell.
@@ -48,27 +49,64 @@
     Number.prototype.toFxdStr = function(n){
       return this.toFixed(n).toString();
     };
+    let registerAnimation = function(duration,f){
+      var i = anis.length;
+      anis[i] = {
+        "totalms":duration,
+        "f":f,
+        "elapsedms":0,
+        "finished":false
+      };
+    };
+    var anis = []; // animations: {total,done, f}
+    var ti = null;
+    var runAnimations = function(ts){
+      if(!ti) ti = ts;
+      var dt = ts - ti;
+      anis.forEach(function(o){
+        o.elapsedms = o.elapsedms + dt;
+        var frac = 1-(o.totalms-o.elapsedms)/o.totalms;
+        o.finished=o.f(frac);
+      });
+      anis = anis.filter(o => !o.finished);
+      //tell(["Circles: " + anis.length]);
+      window.requestAnimationFrame(runAnimations);
+      ti = ts;
+    };
+    window.requestAnimationFrame(runAnimations);
     
+    var csize = 30;
+    let fadingOutCircle = function(x,y){
+      var c = document.createElementNS(svgNS,"circle");
+      c.setAttribute("cx",x);
+      c.setAttribute("cy",y);
+      c.setAttribute("r",csize);
+      c.setAttribute("fill","#AADDBB");
+      svgCtx.insertBefore(c,svgCtx.firstChild); // svg draws first children first
+      registerAnimation(500,function(t){ /* an animation of 500ms, to from 0 to 1*/
+        //tell(["Now now at " + t.toFxdStr(2)]);
+        if (t<1){
+          c.setAttribute("r",csize*Math.max((1-t),0));
+          return false;
+        } else {
+          //tell(["Should be removed now..."]);
+          c.remove();
+          return true;
+        }
+      });
+    };
     
     // get svg element and group
-    var svgCtx = document.getElementsByTagNameNS("http://www.w3.org/2000/svg","svg")[0];
+    var svgCtx = document.getElementsByTagNameNS(svgNS,"svg")[0];
     var svgRegion = new ZingTouch.Region(svgCtx);
     
-    var touchCircle = document.getElementsByTagNameNS("http://www.w3.org/2000/svg","g")[0];
+    var touchCircle = document.getElementsByTagNameNS(svgNS,"g")[0];
     touchCircle.x = 0;
     touchCircle.y = 0;
     touchCircle.myTranslate=function(x,y){
       this.setAttribute("transform","translate("+(this.x+x)+","+(this.y+y)+")");
+      // create fading out circle, that is behind the main circle
     };
-    /*
-    var touchHandler = function(e){
-      alert("sdf");
-      touchCircle.filter = (touchCircle.isBlur)?"url(#nofilter)":"url(#blur)";
-    };
-    
-    touchCircle.isBlur = false;
-    touchCircle.onclick = touchHandler;
-    */
     
     var slowpan = new ZingTouch.Pan({
       numInputs: 1/* single finger */,
@@ -91,13 +129,15 @@
       var dy = d0*Math.cos(a0);
       touchCircle.myTranslate(x,y);
       
+      fadingOutCircle(x,y);
+      
       // event documentation: https://zingchart.github.io/zingtouch/docs/class/src/core/classes/ZingEvent.js~ZingEvent.html
       var infoStrs = [
         "x: "+e.detail.events[0].x + ", y:"+e.detail.events[0].y,
         "distForg: "+d0.toFxdStr(2),
         "dirForg: "+(a0).toFxdStr(2),
         "dirCurr: "+(an).toFxdStr(2)];
-      tell(infoStrs);
+      //tell(infoStrs);
     });
   </script>
   </body>
