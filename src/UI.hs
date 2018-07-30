@@ -21,7 +21,15 @@ svgNS = "http://www.w3.org/2000/svg"
 -- run with:
 {-
 in folder src:
-$ hastec --output-html UI.hs && ./upload.sh && xdg-open "https://n.ethz.ch/~ssahoo/Telegame/UI.html"
+$ hastec --output-html UI.hs
+
+$ ./upload.sh
+to upload UI.html to personal eth website
+
+While developing, view it locally via:
+$ python -m SimpleHTTPServer 8000
+and then open http://192.168.1.2:8000 on mobile/desktop.
+If the ip has changed, then lookup in `ifconfig`.
 
 What to do, when you need some Haste functionality:
 . Is it mentioned in the ovewview? https://github.com/valderman/haste-compiler

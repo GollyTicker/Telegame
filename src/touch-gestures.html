@@ -1,0 +1,104 @@
+<!doctype html>
+<html>
+  <head>
+  </head>
+  <body>
+    <svg version="1.1" id="mysvg"
+     width="300" height="400"
+     xmlns="http://www.w3.org/2000/svg">
+     <filter id="blur">
+       <feGaussianBlur in="SourceGraphic" stdDeviation="4"/>
+     </filter>
+     <filter id="nofilter">
+       <feGaussianBlur in="SourceGraphic" stdDeviation="0"/>
+     </filter>
+      <g filter="url(#nofilter)">
+        <circle cx="0" cy ="0" r="30" fill="#555555"></circle>
+        <circle cx="0" cy ="0" r="20" fill="#DD5522"></circle>
+      </g>
+    <rect width="300" height="400" stroke="black" stroke-width="3" fill-opacity="0"></rect>
+  </svg>
+  <p id="out" style="font-size:0.8em;margin-top:-5px">Drag the circle around!</p>
+  <!-- trying out zingtouch
+    
+    Demos: https://zingchart.github.io/zingtouch/
+    Github: https://github.com/zingchart/zingtouch#overview
+    
+    
+    use svg grouping to keep elements together:
+      https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g
+      useful!
+    
+    Use Firefox -> WebDeveloper -> Responsive Design Mode
+    to quicktest single-finger/input gestures on desktop.
+  -->
+  <script src="zingtouch.min.js"></script>
+  <script>
+    // Utils
+    var out = document.getElementById("out");
+    // tell takes an array of stirng and writes them
+    // one per line into the document. overwrites previous tell.
+    var tell = function(ss){
+      while( out.firstChild ) { out.removeChild( out.firstChild ); }
+      for(var i=0;i<ss.length;i++){
+        out.appendChild( document.createTextNode(ss[i]) );
+        out.appendChild( document.createElement("br") );
+      }
+    };
+    Number.prototype.toFxdStr = function(n){
+      return this.toFixed(n).toString();
+    };
+    
+    
+    // get svg element and group
+    var svgCtx = document.getElementsByTagNameNS("http://www.w3.org/2000/svg","svg")[0];
+    var svgRegion = new ZingTouch.Region(svgCtx);
+    
+    var touchCircle = document.getElementsByTagNameNS("http://www.w3.org/2000/svg","g")[0];
+    touchCircle.x = 0;
+    touchCircle.y = 0;
+    touchCircle.myTranslate=function(x,y){
+      this.setAttribute("transform","translate("+(this.x+x)+","+(this.y+y)+")");
+    };
+    /*
+    var touchHandler = function(e){
+      alert("sdf");
+      touchCircle.filter = (touchCircle.isBlur)?"url(#nofilter)":"url(#blur)";
+    };
+    
+    touchCircle.isBlur = false;
+    touchCircle.onclick = touchHandler;
+    */
+    
+    var slowpan = new ZingTouch.Pan({
+      numInputs: 1/* single finger */,
+      threshold: 1
+    });
+    svgRegion.register('slowpan',slowpan);
+    
+    // todo: next. make it detect, when the pan starts
+    // on the circle. only pan the thing, when drag starts on it.
+    
+    svgRegion.bind(svgCtx,'slowpan',function(e){
+      var d0 = e.detail.data[0].distanceFromOrigin;
+      var a0 = e.detail.data[0].directionFromOrigin/180*Math.PI;
+      var an = e.detail.data[0].currentDirection/180*Math.PI;
+      var x = e.detail.events[0].x;
+      var y = e.detail.events[0].y;
+      
+      // calculate x,y translation
+      var dx = d0*Math.sin(a0);
+      var dy = d0*Math.cos(a0);
+      touchCircle.myTranslate(x,y);
+      
+      // event documentation: https://zingchart.github.io/zingtouch/docs/class/src/core/classes/ZingEvent.js~ZingEvent.html
+      var infoStrs = [
+        "x: "+e.detail.events[0].x + ", y:"+e.detail.events[0].y,
+        "distForg: "+d0.toFxdStr(2),
+        "dirForg: "+(a0).toFxdStr(2),
+        "dirCurr: "+(an).toFxdStr(2)];
+      tell(infoStrs);
+    });
+  </script>
+  </body>
+</html>
