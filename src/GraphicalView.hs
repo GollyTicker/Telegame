@@ -8,12 +8,18 @@ module GraphicalView (
   ) where
 
 import Base
+import Control.Monad (forM_)
 import Haste.DOM
 
 -- to add SVG elements with the proper namespace
 import Haste.Prim (toJSStr)
 import Haste.Foreign (ffi)
 import Control.Monad.IO.Class
+
+-- appends first element as child of second element
+-- and returns the first element
+under :: IO Elem -> Elem -> IO Elem
+x `under` a = do xe <- x; appendChild a xe >> return xe
 
 -- Reference: SVG scripting: https://developer.mozilla.org/en-US/docs/Web/SVG/Scripting
 
@@ -84,6 +90,25 @@ instance Draw PhyObj where
     return g
 ;
 
+instance Draw Env where
+  draw info Solid = fromFile (parent info) "solid.svg"
+  draw info Blank = newSVGElem "g" `under` parent info
+  draw info Platform = fromFile (parent info) "platform.svg"
+  draw info (Door n h) = do
+    g <- newSVGElem "g" `under` parent info
+    let opened = h >= n
+    fromFile g $ if opened then "door-opened.svg" else "door-closed.svg"
+    drawTimes 0 h g "keyinside.svg"
+    drawTimes h n g "keyhole.svg"
+    return g
+      where drawTimes i k g fp = forM_ [i..(k-1)] (\j -> do 
+              kh <- fromFile g fp
+              let size = 0.25 :: Double
+              set kh [attr "transform" =: (concat
+                ["translate(",show 0.1,",",
+                 show (0.63-(size+0.02)*(fromIntegral j)),"),",
+                 "scale(",show size,",",show size,")"])])
+;
 
 
 

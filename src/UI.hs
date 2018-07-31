@@ -1,5 +1,5 @@
 
-{-# OPTIONS #-}
+{-# OPTIONS -Wall -fno-warn-missing-signatures -fno-warn-unused-imports #-}
 
 import Haste.DOM
 import Haste.Events
@@ -54,13 +54,18 @@ main = do
     
     holder <- newSVGElem "g"
     
-    Key `drawWith` Info{parent=holder,tr=(10,20),sc=(50,50)}
-    TOrb 'x' 0 `drawWith` Info{parent=holder,tr=(30,90),sc=(50,50)}
-    TOrb 'x' 1 `drawWith` Info{parent=holder,tr=(90,110),sc=(50,50)}
+    _ <- Key `drawWith` Info{parent=holder,tr=(20,20),sc=(50,50)}
+    _ <- TOrb 'x' 0 `drawWith` Info{parent=holder,tr=(80,20),sc=(50,50)}
+    _ <- TOrb 'x' 1 `drawWith` Info{parent=holder,tr=(140,20),sc=(50,50)}
+    _ <- Solid `drawWith` Info{parent=holder,tr=(20,80),sc=(50,50)}
+    _ <- Blank `drawWith` Info{parent=holder,tr=(80,80),sc=(50,50)}
+    _ <- Platform `drawWith` Info{parent=holder,tr=(140,80),sc=(50,50)}
+    _ <- Door 2 1 `drawWith` Info{parent=holder,tr=(200,80),sc=(50,50)}
+    _ <- Door 2 2 `drawWith` Info{parent=holder,tr=(260,80),sc=(50,50)}
     
     appendChild svg holder
     
-    onEvent documentBody KeyDown $
+    _ <- onEvent documentBody KeyDown $
       ( \_ -> {- todo: scroll by A/D or left/right arrow through spacetime. -}
               return () )
     
