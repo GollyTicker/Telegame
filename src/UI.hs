@@ -47,19 +47,18 @@ main = do
     appendChild documentBody title
     
     css <- newElem "link" `with` [ attr "href" =: "UI.css",
-        attr "rel" =: "stylesheet", attr "type" =: "text/css"
-      ]
+        attr "rel" =: "stylesheet", attr "type" =: "text/css"]
     appendChild documentHead css
 
     svg <- mkSVGenv documentBody
     
     holder <- newSVGElem "g"
-    Info{parent=holder} `drawsvg` Key
-    appendChild svg holder
     
-    set holder [attr "transform" =: (concat
-      ["translate(",show 10,",",show 20,"),",
-       "scale(",show 10,",",show 10,")"])]
+    Key `drawWith` Info{parent=holder,tr=(10,20),sc=(50,50)}
+    TOrb 'x' 0 `drawWith` Info{parent=holder,tr=(30,90),sc=(50,50)}
+    TOrb 'x' 1 `drawWith` Info{parent=holder,tr=(90,110),sc=(50,50)}
+    
+    appendChild svg holder
     
     onEvent documentBody KeyDown $
       ( \_ -> {- todo: scroll by A/D or left/right arrow through spacetime. -}

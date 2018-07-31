@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="1mm"
+   height="1mm"
+   viewBox="0 0 1 1"
+   version="1.1"
+   id="svg8"
+   inkscape:version="0.92.3 (unknown)"
+   sodipodi:docname="teleorb-0.svg"
+   inkscape:export-filename="/home/swaneet/github/Telegame/src/key.png"
+   inkscape:export-xdpi="96"
+   inkscape:export-ydpi="96">
+  <defs
+     id="defs2" />
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="147.79"
+     inkscape:cx="1.722028"
+     inkscape:cy="1.4501982"
+     inkscape:document-units="px"
+     inkscape:current-layer="layer1"
+     showgrid="false"
+     inkscape:snap-global="false"
+     inkscape:window-width="960"
+     inkscape:window-height="1026"
+     inkscape:window-x="960"
+     inkscape:window-y="26"
+     inkscape:window-maximized="0" />
+  <metadata
+     id="metadata5">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title />
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(0,-296)">
+    <ellipse
+       id="outer"
+       cx="0.5030393"
+       cy="296.50055"
+       rx="0.46048626"
+       ry="0.46707046"
+       style="opacity:1;fill:none;stroke:#222a62;stroke-width:0.05869402;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       inkscape:label="#path3715" />
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;font-size:0.44685379px;line-height:1.25;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.33514035"
+       x="0.41230109"
+       y="296.65585"
+       id="char"
+       inkscape:label="#text871"><tspan
+         sodipodi:role="line"
+         x="0.41230109"
+         y="296.65585"
+         style="stroke-width:0.33514035"
+         id="tspan2214">t</tspan></text>
+    <ellipse
+       id="middle"
+       cx="0.50072408"
+       cy="296.49304"
+       rx="0.37056565"
+       ry="0.3648439"
+       style="opacity:1;fill:none;stroke:#c2c8d4;stroke-width:0.07235878;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.80099505"
+       inkscape:label="#path3715-3" />
+    <ellipse
+       id="inner"
+       cx="0.50254768"
+       cy="296.49603"
+       rx="0.25678238"
+       ry="0.25281754"
+       style="opacity:1;fill:none;stroke:#7681cf;stroke-width:0.07245503;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.68656719"
+       inkscape:label="#path3715-3-6" />
+  </g>
+</svg>
