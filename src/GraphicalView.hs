@@ -19,7 +19,7 @@ import Control.Monad.IO.Class
 
 
 -- https://stackoverflow.com/questions/6893391/adding-image-namespace-in-svg-through-js-still-doesnt-show-me-the-picture
-xlinkNS = "http://www.w3.org/1999/xlink"
+
 svgNS = "http://www.w3.org/2000/svg"
 
 -- haste doesn't support Elements from namesapces different than HTML.
@@ -52,8 +52,13 @@ class Draw a where
   -}
 ;
 
-unitBB = [attr "x" =: "0", attr "y" =: "0",
+unitBB = unitBBf 0 0
+
+unitBBf :: Double -> Double -> [Attribute]
+unitBBf x y = [attr "x" =: show x, attr "y" =: show y,
     attr "width" =: "1", attr "height" =: "1"]
+
+
 
 fromFile prnt fp = do
     e <- newSVGElem "use" `with` unitBB
@@ -66,13 +71,18 @@ though javascript of css. thus, instead I will be building
 the images bottom up from parts -}
 instance Draw PhyObj where
   draw info Key = fromFile (parent info) "key.svg"
-  draw info (TOrb _c i) = do
+  draw info (TOrb c i) = do
     g <- newSVGElem "g"
     _ <- fromFile g ("teleorb-"++show i++".svg")
-    --ffi (toJSStr "(funciton())"); change character and inner+middle circle for torb visualization
+    txt <- newSVGElem "text" `with` (unitBBf 0.39 0.61 ++ [
+        attr "font-size" =: "0.43px", attr "fill" =: "black"
+      ])
+    set txt [prop "innerHTML" =: (init.tail) (show c)]
+    appendChild g txt
+    -- todo: make eventually the torb change color depending on t-char.
     appendChild (parent info) g
     return g
-
+;
 
 
 
