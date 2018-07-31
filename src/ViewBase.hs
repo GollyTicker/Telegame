@@ -10,6 +10,7 @@ import Data.List (intercalate)
 import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MS
 
+
 instance Show Player where -- added . at beginning and end for easier parsing
   show (Player s {-age-} o inv) = "." ++ f (s {- ++ show age -}) ++ invStr ++ "."
     where invStr | MS.null inv = ""

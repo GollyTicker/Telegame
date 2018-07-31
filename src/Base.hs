@@ -40,7 +40,7 @@ versions and packages:
 . Haskell Platform Core. 8.4.3
   . using Z3 4.7.1 https://github.com/Z3Prover/z3/tree/z3-4.7.1
 . stack 1.7.1: from pre-built binary https://github.com/commercialhaskell/stack/releases
-. Haste (linux pre-built): pre-built package: https://haste-lang.org/downloads/
+. Haste: pre-built package: https://haste-lang.org/downloads/
 . quickcheck: http://www.cse.chalmers.se/~rjmh/QuickCheck/manual_body.html#16
 . install new packages using haste-cabal instead of
 normal cabal due to haste's cross compilation.
@@ -53,6 +53,12 @@ Stack:
 . using two builds. one for running locally on console (main in Maps.hs),
 and the other one running as html-webpage by haste.
   stack ghci, stack setup, stack build, stack exec ....
+
+Licensing:
+  . Haste BSD-3-Clause http://hackage.haskell.org/package/haste-compiler-0.6.0.0/src/LICENSE
+  . Stack BSD-3-Clause https://github.com/commercialhaskell/stack/blob/master/LICENSE
+  . QuickCheck BSD-3-Clause
+
 
 Liquid Haskell:
   . mini intro: https://ucsd-progsys.github.io/liquidhaskell-blog/
