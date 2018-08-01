@@ -4,6 +4,9 @@
 import Haste.DOM
 import Haste.Events
 import Haste.Graphics.Canvas
+import Data.Foldable
+import qualified Data.MultiSet as MS
+
 import Base
 import View()
 import GameState
@@ -25,6 +28,12 @@ What to do, when you need some Haste functionality:
   file:///home/swaneet/haste-install/docs/index.html
 . Then Examples: https://github.com/valderman/haste-compiler/tree/master/examples
 . as well as pong.hs: https://github.com/iffyio/pong.hs/blob/master/pong.hs
+
+. perhaps use twinch in X,Y or diagonal direction to scroll trhough spacetime?
+that would be simple but powerful enough!
+twinching inwards means going back in time.
+twinching outwards means going into the future.
+
 
 . perhaps use haste-perch or haste-markup?
 . http://hackage.haskell.org/package/haste-perch
@@ -54,14 +63,29 @@ main = do
     
     holder <- newSVGElem "g"
     
-    _ <- Key `drawWith` Info{parent=holder,tr=(20,20),sc=(50,50)}
-    _ <- TOrb 'x' 0 `drawWith` Info{parent=holder,tr=(80,20),sc=(50,50)}
-    _ <- TOrb 'x' 1 `drawWith` Info{parent=holder,tr=(140,20),sc=(50,50)}
-    _ <- Solid `drawWith` Info{parent=holder,tr=(20,80),sc=(50,50)}
-    _ <- Blank `drawWith` Info{parent=holder,tr=(80,80),sc=(50,50)}
-    _ <- Platform `drawWith` Info{parent=holder,tr=(140,80),sc=(50,50)}
-    _ <- Door 2 1 `drawWith` Info{parent=holder,tr=(200,80),sc=(50,50)}
-    _ <- Door 2 2 `drawWith` Info{parent=holder,tr=(260,80),sc=(50,50)}
+    let size = 75
+        blockInf = Info{parent=holder,sc=(size,size),pd=(0,0),tr=undefined}
+        f i j = (i*(size+10)+15,j*(size+10)+15)
+    _ <- Key            `drawWith` blockInf{tr=f 0 0}
+    _ <- TOrb 'x' 0     `drawWith` blockInf{tr=f 0 1}
+    _ <- TOrb 'x' 1     `drawWith` blockInf{tr=f 0 2}
+    
+    _ <- Solid          `drawWith` blockInf{tr=f 1 0}
+    _ <- Blank          `drawWith` blockInf{tr=f 1 1}
+    _ <- Platform       `drawWith` blockInf{tr=f 1 2}
+    _ <- Door 2 1       `drawWith` blockInf{tr=f 1 3}
+    _ <- Door 2 2       `drawWith` blockInf{tr=f 1 4}
+    _ <- Switch True    `drawWith` blockInf{tr=f 1 5}
+    _ <- Switch False   `drawWith` blockInf{tr=f 1 6}
+    
+    _ <- Player "L" True MS.empty 
+          `drawWith` blockInf{tr=f 2 0}
+          
+    _ <- Player "N" False (MS.fromList [Key,TOrb 'y' 1,TOrb 'y' 0])
+          `drawWith` blockInf{tr=f 2 1}
+          
+    _ <- Player "K" True (MS.fromList [TOrb 'z' 0, Key, Key])
+          `drawWith` blockInf{tr=f 2 2}
     
     appendChild svg holder
     
@@ -82,8 +106,9 @@ mkSVGenv docBody = do
   
   r <- newSVGElem "rect" `with` -- border
     [attr "width" =: "100%", attr "height" =: "100%",
-     attr "stroke-width" =: "3", attr "fill-opacity" =: "0",
-     attr "stroke" =: rgbStr (rgb 0.1 0.1 0.1)
+     attr "stroke-width" =: "3", attr "fill-opacity" =: "1",
+     attr "stroke" =: rgbStr (rgb 0.1 0.1 0.1),
+     attr "fill"   =: rgbStr (rgb 0.99 0.96 0.99)
     ]
   appendChild svgEl r
   return svgEl
