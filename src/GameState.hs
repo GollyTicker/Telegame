@@ -1,17 +1,24 @@
-{-# LANGUAGE ScopedTypeVariables,TupleSections #-}
+{-# LANGUAGE ScopedTypeVariables,TupleSections,NamedFieldPuns #-}
 {-# OPTIONS_GHC -Wall #-}
 
-module GameState
+module GameState (
+     mkGSfromObs
+    ,initGS
+    ,addInput
+    ,finalizeHistory
+    
+    {- debug -}
+    ,contradictions
+  )
   where
 
 import Interference
 import View() -- Show instances for error messages
 import qualified Data.Set as S
 import qualified Data.Map as M
---import Data.MultiSet (MultiSet)
-import qualified Data.MultiSet as MS
 import Data.MultiSet (MultiSet)
--- import Data.Foldable
+import qualified Data.MultiSet as MS
+import Data.Foldable
 -- import Data.Maybe (maybeToList)
 import Control.Monad (foldM)
 import Control.Arrow (first,second,(***))
@@ -19,25 +26,25 @@ import Control.Arrow (first,second,(***))
 
 -- import Debug.Trace
 
-mkGSfromObs :: TotalObservations -> MayFail GameState
+mkGSfromObs :: TotalObservations -> MayContra GameState
 mkGSfromObs obs = fmap (GS obs) $ computeCHfromObs obs
   
 -- creates initial gamestate from an initial set of player worlds
-initGS :: S.Set (PWorld BlockSt) -> MayFail GameState
-initGS pws = mkGSfromObs (M.singleton 0 (pws,S.empty))
+initGS :: MultiSet (PWorld BlockSt) -> MayContra GameState
+initGS pws = mkGSfromObs (M.singleton 0 (pws,MS.empty))
 
 {-
 Assumptions:
 . there is at least one time-step with an observation
   where a non-empty mapsize is used
 -}
-computeCHfromObs :: TotalObservations -> MayFail ConsHistory
+computeCHfromObs :: TotalObservations -> MayContra ConsHistory
 computeCHfromObs obs = 
   do  
     let initCH = defaultConsHistory (maxT,mapSize)
     applyAllObservations obs initCH
   where mapSize = maybe (0,'A') (getSize . fst) $ M.minView obs
-        getSize (pws,_) = case S.elems pws of 
+        getSize (pws,_) = case MS.elems pws of 
                       [] -> (0,'A')
                       (pw:_) -> ssize pw
         
@@ -48,7 +55,7 @@ computeCHfromObs obs =
         maximum' = foldr max (-1)
         maxTeletime :: Int
         maxTeletime = maximum' $ M.map maxPerTime obs
-        maxPerTime (_,pwts) = maximum' $ S.map maxPerSpace pwts
+        maxPerTime (_,pwts) = maximum' $ MS.map maxPerSpace pwts
         maxPerSpace = maximum' . M.map blockContent . sobservations
         blockContent :: BlockTr -> Int
         blockContent = maximum' . MS.map (maxDestTimePT . snd3) . bctps
@@ -81,13 +88,13 @@ concrete such that every element is uniquely defined.
 -- applies each observation one after a time.
 -- halts at the firstcontradiction that occurred
 -- if everything is consistent, then a ConsHistory is returned
-applyAllObservations :: TotalObservations -> ConsHistory -> MayFail ConsHistory
+applyAllObservations :: TotalObservations -> ConsHistory -> MayContra ConsHistory
 applyAllObservations mp ch0 = foldlWithKeyM f ch0 mp
   where
-    f :: Time -> (S.Set (PWorld BlockSt), S.Set (PWorld BlockTr)) -> ConsHistory -> MayFail ConsHistory
+    f :: Time -> (MultiSet (PWorld BlockSt), MultiSet (PWorld BlockTr)) -> ConsHistory -> MayContra ConsHistory
     f t (pws,pwts) ch =
-      do ch2 <- foldM (applyPWSt t) ch  (S.toList pws )
-         foldM        (applyPWTr t) ch2 (S.toList pwts)
+      do ch2 <- foldM (applyPWSt t) ch  (toList pws )
+         foldM        (applyPWTr t) ch2 (toList pwts)
 ;
 
 -- assumes, that ch is consistent already.
@@ -95,24 +102,24 @@ applyAllObservations mp ch0 = foldlWithKeyM f ch0 mp
 -- it is inconcsistent, if there is already a differing Just value at (t,pos)
 -- it is consistent, if there is a Nothing at (t,pos) and
 -- the network stays consistent after adding it.
-applyPWSt :: Int -> ConsHistory -> PWorld BlockSt -> MayFail ConsHistory
+applyPWSt :: Int -> ConsHistory -> PWorld BlockSt -> MayContra ConsHistory
 applyPWSt t ch0 pw = applypwObs (Proxy::Proxy BlockSt) pw addOpenObs addClosedObs
   where
     addOpenObs = foldlWithKeyM (\pos bc -> addWhenConsistent (t,pos) bc) ch0 . sobservations
     addClosedObs x = let (pos,bc) = sobservations x in addWhenConsistent (t,pos) bc ch0
-    addWhenConsistent :: TimePos -> BlockSt -> ConsHistory -> MayFail ConsHistory
+    addWhenConsistent :: TimePos -> BlockSt -> ConsHistory -> MayContra ConsHistory
     addWhenConsistent tpos bc ch =
          (\x -> insertCHSt tpos x ch) <$>
            atCHSt tpos (failPlayerObsOutOfBounds tpos ch)
                 (maybe (success bc) (\bc' -> if bc == bc' then success bc else failPlayObsContraHistory tpos bc bc'))
                 ch
 ;         -- these two functions are difficult to refactor together...
-applyPWTr :: Int -> ConsHistory -> PWorld BlockTr -> MayFail ConsHistory
+applyPWTr :: Int -> ConsHistory -> PWorld BlockTr -> MayContra ConsHistory
 applyPWTr t ch0 pw = applypwObs (Proxy::Proxy BlockTr) pw addOpenObs addClosedObs
   where
     addOpenObs = foldlWithKeyM (\pos bc -> addWhenConsistent (t,pos) bc) ch0 . sobservations
     addClosedObs = foldlWithKeyM (\pos bc -> addWhenConsistent (t,pos) bc) ch0 . sobservations
-    addWhenConsistent :: TimePos -> BlockTr -> ConsHistory -> MayFail ConsHistory
+    addWhenConsistent :: TimePos -> BlockTr -> ConsHistory -> MayContra ConsHistory
     addWhenConsistent tpos bc ch =
       do mybc  <- atCHTr tpos (failPlayerObsOutOfBounds tpos ch)
                   (maybe (success bc) (\bc' -> if bc == bc' then success bc else failPlayObsContraHistory tpos bc bc'))
@@ -121,10 +128,10 @@ applyPWTr t ch0 pw = applypwObs (Proxy::Proxy BlockTr) pw addOpenObs addClosedOb
          return (insertCHTr tpos mybc chNew)
 ;
 
-failPlayObsContraHistory :: (Show a, Show b) => TimePos -> a -> b -> MayFail c
+failPlayObsContraHistory :: (Show a, Show b) => TimePos -> a -> b -> MayContra c
 failPlayObsContraHistory tpos b b' = failing $ "applyPW: players observation contradicts with established history at "++show tpos ++". observed: "++show b ++ ", established: " ++ show b'
 
-failPlayerObsOutOfBounds :: TimePos -> ConsHistory -> MayFail a
+failPlayerObsOutOfBounds :: TimePos -> ConsHistory -> MayContra a
 failPlayerObsOutOfBounds tpos ch = failing $ "applyPW[unusual]: players observation "++show tpos++" is out-of-bounds in history. history size = "++ show (chsize ch) ++ ", with ch:\n" ++ show ch
 
 
@@ -151,9 +158,9 @@ runChecks curr b ch =
   let missing = findMissingIndices (ccneeds cc) ch
       cc = interferesWithBlock curr b
   in  filter isContradiction $ selfconsistent b : 
-        if S.null missing
+        if null missing
           then ccrun cc (flatten (chspace ch)) (chglobal ch)
-          else map (listFailReferenceOutOfBounds curr) . S.toList $ missing
+          else map (listFailReferenceOutOfBounds curr) . toList $ missing
 ;
 
 flatten :: Timed (Space a) -> M.Map TimePos a
@@ -184,12 +191,12 @@ insertCHTr :: TimePos -> BlockTr -> ConsHistory -> ConsHistory
 insertCHTr (t,pos) b ch = ch { chspace = M.adjust (M.adjust (second (const (Just b))) pos) t (chspace ch)}
 
 
-{- MAIN FUNCTION: concreteHistory. should use runChecks -}
+{- MAIN FUNCTION: finalizeHistory. should use runChecks -}
 -- specializes all Unkowns to a unique history
 -- or fails with contradictions.
 -- this is called at the end of all inputs to check if the room is solved.
-concreteHistory :: ConsHistory -> MayFail ConsHistory
-concreteHistory _ = failing "TODO: implement concreteHistory"
+finalizeHistory :: ConsHistory -> MayContra ConsHistory
+finalizeHistory _ = failing "TODO: implement finalizeHistory"
 -- for this function, inferencability from interactions blocks is nesessary (see Base.hs)
 -- after everyhitn has been made concrete, another
 -- run of checks will be done to assure that the inserted elements
@@ -209,23 +216,39 @@ defaultConsHistory (tmax,pmax) =
   }
 
 default2DMap :: Pos -> a -> Space a
-default2DMap (sx,sy) e =
-  M.fromList . concat $ map
-                          (\y -> map
-                                  (\x -> ((x,y),e))
-                                  [0..sx])
-                          ['A'..sy]
+default2DMap (sx,sy) e = M.fromList $ (\x y -> ((x,y),e)) <$> [0..sx] <*> ['A'..sy]
 ;
 
-{- concreteHistory,computeCHfromObs -}
+extendCHTo :: Time -> ConsHistory -> ConsHistory
+extendCHTo tMax ch@CH{chsize,chspace} =
+  let new = M.union chspace $ M.fromList
+        $ (,default2DMap (snd chsize) (Nothing,Nothing))
+          <$> [fst chsize..tMax]
+  in  ch{chspace = new}
 
-addInput :: GameState -> MultiSet (Specific PlayerInput) -> Either [CondRes] GameState
-addInput = undefined
-{-
-the gamestate argument to runTurn is assumed to be self-consistent.
+addToObservations :: (Time,PWorld BlockTr,PWorld BlockSt)
+                      -> GameState -> MayContra GameState
+addToObservations (t,pobsT,pobs) (GS obs ch0) = do
+  let newObs = M.fromList [(t  ,(MS.empty         , MS.singleton pobsT)),
+                           (t+1,(MS.singleton pobs, MS.empty          ))]
+      merge (ms1,mst1) (ms2,mst2) = (MS.union ms1 ms2,MS.union mst1 mst2)
+  newCH <- applyAllObservations newObs (extendCHTo (t+1) ch0)
+  return $ GS (M.unionWith merge obs newObs) newCH
+;
 
-1. apply each players action
-1.1. report if action is creates immediate contradiction
-2. collect all observations
-3. continue with next round
+{- USING: computeCHfromObs OK,
+          data-type GameState OK,
+          plyrInputAsObs OK
+  ASSUME: gamestate has valid consistency history pre-computed
+          and where the gamestate istself is already consistent.
+  FUNCTION:
+    adds the players input into the gamestate.
+    either returns with immediate inconsistency warnings
+    or returns a new updated gamestate
 -}
+addInput :: GameState -> Specific PlayerInput -> MayContra GameState
+addInput gs0 spi =
+  let obs = inputToObs _ -- spi todo: get specific players pworld-view
+  in  addToObservations obs gs0
+;
+

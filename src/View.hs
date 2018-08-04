@@ -10,9 +10,9 @@ import Interference
 import ViewBase
 import Data.List (intercalate,transpose)
 import qualified Data.Map as M
-import qualified Data.Set as S
 import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MS
+import Data.Foldable
 
 padspaces :: [[String]] -> [[String]]
 padspaces xss =
@@ -44,6 +44,7 @@ instance Show BlockSt where
 deriving instance Show BC_Cons
 deriving instance Show BCT_Cons
 deriving instance Show EnvT
+deriving instance Show PlayerInput
 
 instance Show BlockTr where
   show (BCT (env1,envt,env2) ots pts) =
@@ -150,8 +151,8 @@ instance Read BlockSt where
     in  [(BC ps os e,"")]
 ;
 
-showSet :: Show a => S.Set a -> String
-showSet = intercalate "\n" . map show . S.toList
+showFld :: (Foldable t,Show a) => t a -> String
+showFld = intercalate "\n" . map show . toList
 
 instance Show ConsHistory where
   show (CH m sz g) = 
@@ -183,6 +184,6 @@ instance Show GameState where
        Right x -> x
     where f str t (pws,pwts) =
             str ++ "\n\n  ======= t = " ++ show t ++ " ======= \n\
-            \    Static observations:\n" ++ indent 6 (showSet pws)
+            \    Static observations:\n" ++ indent 6 (showFld pws)
             ++ "\n    Then transition observations:\n"
-            ++ indent 6 (showSet pwts)
+            ++ indent 6 (showFld pwts)

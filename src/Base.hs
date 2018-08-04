@@ -26,18 +26,19 @@ module Base(
     ,EARep(..)
     ,EnvT(..)
     ,PlayerInput(..)
+    ,inputToObs
     ,PlayerAction(..)
     ,runpa
     ,runpat
     ,toDirpa
     ,fromDirpa
     ,PlayerT(..)
-    ,runMayFail
+    ,runMayContra
     ,failing
     ,success
     ,maybeToEither
     ,TotalObservations
-    ,MayFail
+    ,MayContra
     ,GameState(..)
     ,Field
     ,TimePos
@@ -57,6 +58,9 @@ module Base(
 {-
 Main todo:
 . implement game state tansition function
+  . extend Player to have immediate past memory?
+  . actually. that is alread implemented using ClosedObs.
+  . it's the Specific a part, that captures the player-memory-ness.
 . clean up and tidy and refactor
 . INTEGRATE stack into Haste. unified and reproduceable build
 . use a good haskell IDE to make types support writing even more?
@@ -116,6 +120,11 @@ type Pos = (Int,Char)
 data Player = Player { pname :: String {- must be non-empty -}, peyes :: Bool, pinventory :: MultiSet PhyObj}
   deriving (Eq,Ord)
   {- name,(removed age for loops) , True means eyes are open, inventory -}
+
+-- type Anticipation = Space (Maybe BlockSt)
+-- an anticipation concerns only the positions with Just.
+-- these positions have a new BlockSt specified as the desired state
+-- type AnticipationT = Space (Maybe BlockTr)
 
 type PWorld a = OpenObs a
 class (Show (This a),Typeable a) => Block a where
@@ -216,7 +225,7 @@ type Space a = M.Map Pos a
 -- current observations of a specific player of a room-view
 data Specific a =
   Specific { -- the observations from the perspective of a specific player
-     stime :: Int
+     stime :: Time
     ,splayer :: Player
     ,ssize :: Pos
     ,sobservations :: a
@@ -278,26 +287,26 @@ data EARep = TraverseDoor
 data EnvT = EnvStays | EnvUsedOnce EAOnce | EnvUsedMult [EARep]
   deriving (Eq,Ord,Data,Typeable)
 
--- TODO: integrate PlayerActionTotal...
+{- PRE-CONDITIONS:
+. when state anticipation is used, then the eyes must be closed during that time
+. the player can anticipate both before and after their action
+. a transition can also be anticipated (doesn't require closed eyes)
+-}
 data PlayerInput =
-  PAT { eyesClosedBeg :: Bool -- True, if the eyes are closed in the beginning
-        ,anticipationBeg :: Antcpt BlockSt -- player can anticipate anything. though only their observations count
-        ,phyAction :: PlayerAction
-        ,anticipationT :: Antcpt BlockTr  -- anticipate transitions
-        ,anticipationEnd :: Antcpt BlockSt -- anticipation also needs to work for closed eyes roomview
-        ,eyesClosedEnd :: Bool
-        -- there are two anticipation points.
-        -- both corresponding to the ancitipated change of something before or after the turn and movement.
-        -- during closed eyes, the non-interfering prediction is shown as base for anticipation
-        -- AnticipationT describes anticipation of transitions
-  } -- deriving (Data,Typeable)
--- the order of 'execution' is the order of the records in the declaration
+  PAT { eyesOpenedT :: Bool
+        ,antcpt0 :: Antcpt BlockSt
+        ,paction :: PlayerAction
+        ,antcptT :: Antcpt BlockTr
+        ,antcpt1 :: Antcpt BlockSt
+  } deriving (Typeable)
 
--- type Anticipation = Space (Maybe BlockSt)
--- an anticipation concerns only the positions with Just.
--- these positions have a new BlockSt specified as the desired state
+-- takes a specific player world on a state and an input and creates
+-- from it the concrete observation
+inputToObs :: Specific (PWorld BlockSt, PlayerInput) ->
+  (Time{-of transition-},PWorld BlockTr,PWorld BlockSt)
+inputToObs (Specific st sp sz (pobs,PAT _ _ _ _ _)) =
+  undefined --(st,_,_)
 
--- type AnticipationT = Space (Maybe BlockTr)
 
 data PlayerAction =
   MoveL | MoveR
@@ -413,27 +422,24 @@ runpat _init mot compl complf pat =
 -- PlayerWorld  ~= Time x PlayerID x Space BlockSt
 -- PlayerWorldT ~= Time x PlayerID x Space BlockTr
 
-type MayFail a = Either [CondRes] a
+type MayContra a = Either [CondRes] a
 
-runMayFail :: ([CondRes] -> a) -> (b -> a) -> MayFail b -> a
-runMayFail = either
+runMayContra :: ([CondRes] -> a) -> (b -> a) -> MayContra b -> a
+runMayContra = either
 
-failing :: String -> MayFail a
+failing :: String -> MayContra a
 failing = Left . (:[])
 
-success :: a -> MayFail a
+success :: a -> MayContra a
 success = Right
 
 maybeToEither :: e -> Maybe a -> Either e a
 maybeToEither e = maybe (Left e) Right 
 
-
-
-
 -- a gamestate contains all the memories and acitons of all the players as well as the environmental changes
 -- it starts with the intial state of the players and adds an evolution
 -- of transitions and successive states of the world and the players.
-type TotalObservations = Timed (S.Set (PWorld BlockSt), S.Set (PWorld BlockTr))
+type TotalObservations = Timed (MultiSet (PWorld BlockSt),MultiSet (PWorld BlockTr))
 data GameState = GS {
      gsobs :: TotalObservations
        -- an intial player state for each player AND

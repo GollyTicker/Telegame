@@ -260,6 +260,7 @@ hasPastIf ths oth (t,pos) o f =
   let (dest,atBoundary) = if ths `is_a` St then ((t-1,pos),t <= 0) else ((t,pos),False)
   in  if atBoundary then alwaysOk
       else mkSimpleCC dest $ unknownOkAnd (fromBool (show ((t,pos),ths) ++" requires past for "++show o ++" at " ++ show (dest,oth)) . f) . getter oth
+;
 
 phyObjInterferesWithT :: TimePos -> PhyObj -> PhyObjT -> ConditionsChecker
 phyObjInterferesWithT _ _ _ = alwaysOk
@@ -298,7 +299,7 @@ envInterferesWith curr env =
   `also` hasPastIf   St Tr curr env ((env==) . thd3 . bctenv)
 ;
 
-adjustGlobalInfo :: BlockTr -> ConsHistory -> MayFail ConsHistory
+adjustGlobalInfo :: BlockTr -> ConsHistory -> MayContra ConsHistory
 adjustGlobalInfo bct ch0 = foldM f ch0 (bctps bct) where
   insertable t ch = maybe True (t==) $ M.lookup (tpch t) (chglobal ch)
   inserttp   t ch = ch {chglobal = M.insert (tpch t) t (chglobal ch)}
@@ -311,9 +312,9 @@ adjustGlobalInfo bct ch0 = foldM f ch0 (bctps bct) where
 -- a function crucial for concreteHistory.
 -- given a set of conditions to be satisfied,
 -- it searches for the simplest BlockSt that satisfies it.
-inferMinimal :: BC_Cons -> MayFail BlockSt
+inferMinimal :: BC_Cons -> MayContra BlockSt
 inferMinimal _ = failing "TODO: implement inferMinimal"
 
-inferMinimalT :: BCT_Cons -> MayFail BlockSt
+inferMinimalT :: BCT_Cons -> MayContra BlockSt
 inferMinimalT _ = failing "TODO: implement inferMinimalT"
 

@@ -114,7 +114,7 @@ map2_GS =
              (3,(f map2_P0_t3,f map2_P0_t3T)),
              (4,(f map2_P0_t4,f map2_P0_t4T))])
       f = S.singleton
-  in  either (error . ("map2_GS: "++) . head) id $ GS obs <$> computeCHfromObs obs
+  in  either (error . ("map2_GS: "++) . head) id $ mkGSfromObs obs
 
 main :: IO ()
 main = do
