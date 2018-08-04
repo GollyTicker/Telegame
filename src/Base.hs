@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeFamilies, DeriveFunctor,DeriveDataTypeable,FlexibleContexts #-}
+{-# LANGUAGE TypeFamilies, DeriveFunctor,DeriveDataTypeable,FlexibleContexts,TupleSections,NamedFieldPuns #-}
 {-# OPTIONS_GHC -Wall #-}
 
 module Base(
@@ -15,6 +15,8 @@ module Base(
     ,Timed
     ,Space
     ,Specific(..)
+    ,sameFocus
+    ,noAction
     ,Dir(..)
     ,PhyObjT(..)
     ,rundir
@@ -112,7 +114,9 @@ import Data.Proxy
 import Data.Data
 import qualified Data.Set as S
 import Data.MultiSet (MultiSet)
+import qualified Data.MultiSet as MS
 import qualified Data.Map as M
+import qualified Data.Maybe as Maybe
 
 {- coordinate system, x y -}
 type Time = Int
@@ -233,6 +237,12 @@ data Specific a =
  deriving (Eq, Ord, Functor)
 ;
 
+sameFocus :: Specific a -> Specific b -> Bool
+sameFocus sp1 sp2 =
+  stime sp1 == stime sp2
+  && splayer sp1 == splayer sp2
+  && ssize sp1 == ssize sp2
+
 -- motion from directon to direction. e.g. Motion R D means, that it came from right and fell down at our block
 -- not all possible values are legitimate. e.g. Motiong L U and Motion L L are invalid.
 data Dir = L | U | R |D
@@ -246,6 +256,26 @@ data PhyObjT = NoMotionT | MotionT Dir Dir
   | TPsend | TPget -- teleorbs, when they are on ground, have TPsend for the
   -- source and TPget for the destination orb. both get destroyed then.
   deriving (Eq,Ord,Data,Typeable)
+;
+
+runPhyObjT :: a
+  -> (Dir -> Dir -> a)
+  -> (Dir -> a)
+  -> a -> a
+  -> (Char -> a) -> (Char -> a)
+  -> a -> a
+  -> PhyObjT -> a
+runPhyObjT nomot mot lf inv grd tparr tpext tpsnd tpget o = case o of
+  NoMotionT        -> nomot
+  MotionT din dout -> mot din dout
+  LandFrom di      -> lf di
+  IntoInventory    -> inv
+  OntoGround       -> grd
+  TParrive c       -> tparr c
+  TPexit   c       -> tpext c
+  TPsend           -> tpsnd
+  TPget            -> tpget
+;
 
 rundir :: a -> a -> a -> a -> Dir -> a
 rundir l u r d dir = case dir of L -> l; U -> u; R -> r; D -> d
@@ -301,12 +331,47 @@ data PlayerInput =
   } deriving (Typeable)
 
 -- takes a specific player world on a state and an input and creates
--- from it the concrete observation
-inputToObs :: Specific (PWorld BlockSt, PlayerInput) ->
+-- from it the concrete observation. assumes, that a player
+-- focused in Specific exists in Space BlockSt.
+{- todo: enable to make this work with two players moving simultanously -}
+inputToObs :: Specific (Space BlockSt, PlayerInput) ->
   (Time{-of transition-},PWorld BlockTr,PWorld BlockSt)
-inputToObs (Specific st sp sz (pobs,PAT _ _ _ _ _)) =
-  undefined --(st,_,_)
+inputToObs spi@(Specific st sp sz (pobs,PAT eo ant0 pa antT ant1)) =
+  let (newTr,newSt) = undefined noActionSucc
+      {- todo: use noActionSucc and player input -}
+      -- do not forget to adapt time and player focus
+  in  (st,newTr,newSt)
+;-- only need to dumbly apply the player input.
+-- contradictions are already taken care of in the caller-context.
+-- we don't even need to check, that they have their eyes
+-- closed during state anticipation, because that is caught by the
+-- conditions-checker in caller ctx.
 
+-- given a focused map of block-states, it returns the successor
+-- transition and state assuming, that nothing happens
+noActionSucc :: BlockSt -> (BlockTr,BlockSt)
+noActionSucc x = let xtr = f x in (xtr, g xtr)
+  where f (BC ps os env) = BCT {
+       bctenv = (env,EnvStays,env)
+      ,bctos = M.fromListWith MS.union $ map (,MS.singleton NoMotionT) $ MS.toList os
+      ,bctps = MS.map (\p -> (p,Completed NoAction,p)) ps
+    }
+        g BCT{bctenv,bctos,bctps} = BC{
+       bcenv = thd3 bctenv
+      ,bcps  = MS.map thd3 bctps
+      ,bcos  = MS.unions . M.elems
+        . M.mapWithKey (\o -> catMaybes . MS.map (afterPhyObjT o)) $ bctos
+    }
+;
+afterPhyObjT :: PhyObj -> PhyObjT -> Maybe PhyObj
+afterPhyObjT o = let jo = Just o; n = Nothing
+  in  runPhyObjT jo (\_ _->n) (\_->jo) n jo (\_->jo) (\_->n) n n
+
+catMaybes ::Ord a => MultiSet (Maybe a) -> MultiSet a
+catMaybes = MS.fromList . Maybe.catMaybes . MS.toList
+
+noAction :: (Functor f, Functor g) => f (g BlockSt) -> f (g BlockTr)
+noAction = fmap (fmap (fst . noActionSucc))
 
 data PlayerAction =
   MoveL | MoveR

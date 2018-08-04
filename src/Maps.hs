@@ -7,7 +7,6 @@ module Maps
 import Base
 import View
 import GameState
-import qualified Data.Set as S
 import qualified Data.Map as M
 import qualified Data.MultiSet as MS
 
@@ -19,15 +18,6 @@ mkPwith eo ls = Player "P" eo (MS.fromList ls)
 
 one (act,p) = MS.singleton (p,act,p)
 oneO (mot,o) = M.singleton o (MS.singleton mot)
-
-noAction :: (Functor f, Functor g) => f (g BlockSt) -> f (g BlockTr)
-noAction = fmap (fmap f)
-  where f (BC ps os env) = BCT {
-       bctenv = (env,EnvStays,env)
-      ,bctos = M.fromListWith MS.union $ map (,MS.singleton NoMotionT) $ MS.toList os
-      ,bctps = MS.map (\p -> (p,Completed NoAction,p)) ps
-    }
-;
 
 map1_P0 = Specific 0 (mkP True) (7,'D') $ fromString
     ".P., ,_, , ,ta1 ta0, D00, \n\
@@ -103,7 +93,7 @@ map2_P0_t4T =
   $ noAction map2_P0_t4
 
 map2_initGS :: GameState
-map2_initGS = either (error . ("map2_initGS: "++) . head) id $ initGS (S.singleton map2_P0_t0)
+map2_initGS = either (error . ("map2_initGS: "++) . head) id $ initGS (MS.singleton map2_P0_t0)
 
 map2_GS :: GameState
 map2_GS =
@@ -113,7 +103,7 @@ map2_GS =
              (2,(f map2_P0_t2,f map2_P0_t2T)),
              (3,(f map2_P0_t3,f map2_P0_t3T)),
              (4,(f map2_P0_t4,f map2_P0_t4T))])
-      f = S.singleton
+      f = MS.singleton
   in  either (error . ("map2_GS: "++) . head) id $ mkGSfromObs obs
 
 main :: IO ()

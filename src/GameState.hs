@@ -19,7 +19,7 @@ import qualified Data.Map as M
 import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MS
 import Data.Foldable
--- import Data.Maybe (maybeToList)
+import Data.Maybe (listToMaybe)
 import Control.Monad (foldM)
 import Control.Arrow (first,second,(***))
 -- first: apply function on fst-element in tuple; f *** g = \(a,b) -> (f a,g b)
@@ -226,8 +226,7 @@ extendCHTo tMax ch@CH{chsize,chspace} =
           <$> [fst chsize..tMax]
   in  ch{chspace = new}
 
-addToObservations :: (Time,PWorld BlockTr,PWorld BlockSt)
-                      -> GameState -> MayContra GameState
+addToObservations :: (Time,PWorld BlockTr,PWorld BlockSt) -> GameState -> MayContra GameState
 addToObservations (t,pobsT,pobs) (GS obs ch0) = do
   let newObs = M.fromList [(t  ,(MS.empty         , MS.singleton pobsT)),
                            (t+1,(MS.singleton pobs, MS.empty          ))]
@@ -236,6 +235,21 @@ addToObservations (t,pobsT,pobs) (GS obs ch0) = do
   return $ GS (M.unionWith merge obs newObs) newCH
 ;
 
+{- todo: also add blocktr information to enable collaborative turn-taking -}
+--findPWorldInGameState :: GameState -> Specific a -> MayContra (PWorld BlockSt)
+findPWorldInGameState GS{gsobs} sp@Specific{stime,splayer} = do
+  let mpwmpwt = do (pws,pwts) <- M.lookup stime gsobs
+                   pw <- listToMaybe . toList . MS.filter (sameFocus sp) $ pws
+               {- find any observations for the coming turn if already some players have moved -}
+                   return pw
+               --return $ (pw,) $ listToMaybe . toList . MS.filter (sameFocus sp) $ pwts
+  maybeToEither
+    [concat ["[t = ",show stime,"]: Player ",show splayer," not found"]]
+    mpwmpwt
+;
+
+{- lesson learned: need to reduce GameState even further down to
+    actual player-inputs at Specific TimePos. -}
 {- USING: computeCHfromObs OK,
           data-type GameState OK,
           plyrInputAsObs OK
@@ -247,8 +261,9 @@ addToObservations (t,pobsT,pobs) (GS obs ch0) = do
     or returns a new updated gamestate
 -}
 addInput :: GameState -> Specific PlayerInput -> MayContra GameState
-addInput gs0 spi =
-  let obs = inputToObs _ -- spi todo: get specific players pworld-view
-  in  addToObservations obs gs0
+addInput gs0 spi = do
+  pw <- findPWorldInGameState gs0 spi
+  let obs = inputToObs (fmap (sobservations pw,) spi)
+  addToObservations obs gs0
 ;
 
