@@ -1,4 +1,4 @@
-{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE NamedFieldPuns,FlexibleInstances #-}
 {-# OPTIONS -Wall -fno-warn-missing-signatures #-}
 module GraphicalView (
      svgNS
@@ -10,14 +10,27 @@ module GraphicalView (
 import Base
 import ViewBase()
 import Data.Foldable
+import qualified Data.Map as M
 
-import Control.Monad (zipWithM_)
-import Haste.DOM
+import Control.Monad (zipWithM_,when,void)
+import Haste.DOM hiding (with)
+import qualified Haste.DOM as HD
 
 -- to add SVG elements with the proper namespace
 import Haste.Prim (toJSStr)
 import Haste.Foreign (ffi)
 import Control.Monad.IO.Class
+
+import System.IO.Unsafe -- debug tracing
+
+
+tellW :: Show a => a -> b -> b
+tellW x z = (unsafePerformIO $
+  do p <- newElem "p" `under` documentBody
+     newTextElem ("Trace:"++ show x) `under` p) `seq` z
+
+tell :: Show a => a -> a
+tell x = tellW x x
 
 -- appends first element as child of second element
 -- and returns the first element
@@ -43,8 +56,11 @@ data Info = Info {
    ,tr     :: (Double,Double)
    ,pd     :: (Double,Double)
    ,sc     :: (Double,Double)
-} 
+   ,brd    :: Maybe Double
+}  deriving (Show)
 {- style information? -}
+instance Show Elem where show _ = "<elem>"
+{- orphan instanve only for convinience -}
 
 transform :: IO Elem -> Info -> IO Elem
 transform me Info{tr=(tx,ty),sc=(sx,sy)} = do
@@ -57,14 +73,28 @@ transform me Info{tr=(tx,ty),sc=(sx,sy)} = do
 
 class Draw a where
   drawWith :: a -> Info -> IO Elem {- transforms the standardized implementaiton -}
-  drawWith x inf = transform (draw inf x) inf
+  drawWith x info@Info{tr,sc,brd} = do
+    e <- draw info x `transform` info
+    maybe (return ()) (\b -> void $ newSVGElem "rect"
+      `with` ([attr "width" =: px (fst sc), attr "height" =: px (snd sc),
+        attr "x" =: px (fst tr), attr "y" =: px (snd tr),
+        attr "stroke-width" =: show b,attr "stroke" =: "#333",
+        attr "fill-opacity" =: "0",attr "stroke-opacity" =: "0.5"])
+      `under` parent info) brd
+    return e
+    where px = (++"px") . show
   
   draw :: Info -> a -> IO Elem {- simpler version to implement -}
     {- an svg elem in the coordinate-domain {0..1} x {0..1}.
-  it is expected to be scaled and transformed by the caller.
-  only uses parent node to attach itself
+    IMPORTANT: WE MEAN (1,1) TO BE BOMTTOM-RIGHT OF (0,0) !!
+    it is expected to be scaled and transformed by the caller.
+    only uses parent node to attach itself
   -}
 ;
+
+with = HD.with
+infixl 9 `with`
+infixl 8 `under`
 
 unitBB = unitBBf 0 0
 
@@ -74,9 +104,8 @@ unitBBf x y = [attr "x" =: show x, attr "y" =: show y,
 ;
 
 addSVG prnt fp = do
-    e <- newSVGElem "use" `with` unitBB
+    e <- newSVGElem "use" `with` unitBB `under` prnt
     set e [attr "href" =: (fp++"#layer1")]
-    appendChild prnt e
     return e
 ;
 {- it seems VERY difficult to access the inner SVGs contents
@@ -85,17 +114,18 @@ the images bottom up from parts -}
 instance Draw PhyObj where
   draw info Key = parent info `addSVG` "key.svg"
   draw info (TOrb c i) = do
-    g <- newSVGElem "g"
+    g <- newSVGElem "g" `under` parent info
     _ <-  g`addSVG` ("teleorb-"++show i++".svg")
-    txt <- newSVGElem "text" `with` (unitBBf 0.39 0.61 ++ [
-        attr "font-size" =: "0.43px", attr "fill" =: "black"
-      ])
-    set txt [prop "innerHTML" =: (init.tail) (show c)]
-    appendChild g txt
-    -- todo: make eventually the torb change color depending on t-char.
-    appendChild (parent info) g
+    _ <- newSVGElem "circle" `with` [
+        attr "cx" =: "0.5", attr "cy" =: "0.5", attr "r" =: "0.25",
+        attr "fill" =: maybe "black" id (M.lookup c teleOrbCMap)
+      ] `under` g
     return g
 ;
+
+teleOrbCMap = M.fromList $ zip
+  "abcdef"
+  ["blue","yellow","red","green","purple","orange"]
 
 {- stacks all drawings in the list.
 uses size sc(...) for the drawings and
@@ -104,8 +134,8 @@ the (dx,dy) denotes, how successive elements are stacked.
 e.g. (1,0) for horizontal stacking.
 (0,2) for vertical with 1-elmt-space inbetween.
 f is the drawing function-}
-stack :: Int {- starting index -} -> (Double,Double) -> Info -> (a -> Info -> IO b) -> [a] -> IO ()
-stack i0 (dx,dy) inf@Info{tr=(tx,ty),sc=(sx,sy),pd=(px,py)} f xs =
+stack :: Int {- starting index -} -> (Double,Double) -> Info -> [a] -> (a -> Info -> IO b) -> IO ()
+stack i0 (dx,dy) inf@Info{tr=(tx,ty),sc=(sx,sy),pd=(px,py)} xs f =
   zipWithM_ (\i x -> let i' = fromIntegral i in
     f x inf{tr=(tx + i'*dx*(sx+px), ty + i'*dy*(sy+py)),sc=(sx,sy)} )
     [i0..] xs
@@ -119,9 +149,9 @@ instance Draw Env where
     let opened = h >= n
     _ <- g `addSVG` if opened then "door-opened.svg" else "door-closed.svg"
     
-    let stk = Info{parent=g,tr=(0.1,0.63),sc=(0.25,0.25),pd=(0.0,0.02)}
-    stack 0 (0,-1) stk (\_ inf -> addSVG g "keyinside.svg" `transform` inf) [1  ..h]
-    stack h (0,-1) stk (\_ inf -> addSVG g "keyhole.svg"   `transform` inf) [h+1..n]
+    let stk = Info{parent=g,tr=(0.1,0.63),sc=(0.25,0.25),pd=(0.0,0.02),brd=Nothing}
+    stack 0 (0,-1) stk [1  ..h] (\_ inf -> addSVG g "keyinside.svg" `transform` inf)
+    stack h (0,-1) stk [h+1..n] (\_ inf -> addSVG g "keyhole.svg"   `transform` inf)
     
     return g
   
@@ -131,25 +161,83 @@ instance Draw Env where
 
 instance Draw Player where
   draw info (Player s op inv) = do
-    g <- newSVGElem "g"
+    g <- newSVGElem "g" `under` parent info
     _ <- addSVG g (if op then "player-opened.svg" else "player-closed.svg")
-      `transform` Info{tr=(0,0.3),sc=(0.7,0.7)}
-    let stk = Info{parent=g,tr=(0.7,0.05),sc=(0.33,0.33),pd=(0.1,0.0)}
-    stack 0 (0,1) stk drawWith (toList inv)
-    parent info `appendChild` g
+      `transform` Info{tr=(0,0.3),sc=(0.7,0.7),brd=Nothing,pd=undefined,parent=undefined}
+    let stk = Info{parent=g,tr=(0.7,0.1),sc=(0.28,0.28),pd=(0.0,0.03),brd=Nothing}
+    stack 0 (0,1) stk (toList inv) drawWith
     txt <- newSVGElem "text" `with` (unitBBf 0.15 0.3 ++ [
-        attr "font-size" =: "0.24px", attr "fill" =: "black"
-      ])
+        attr "font-size" =: "0.24", attr "fill" =: "black"
+      ]) `under` g
     set txt [prop "innerHTML" =: s]
-    appendChild g txt
     return g
 ;
 
+instance Draw BlockSt where
+  draw info (BC ps os e) = do
+    g <- newSVGElem "g" `under` parent info
+    
+    _ <- drawWith e Info{parent=g,tr=(0.5,0),sc=(0.5,0.5),pd=(0,0),brd=Nothing}
+    
+    let osStk = Info{parent=g,tr=(0.05,0.05),sc=(0.28,0.28),pd=(-0.15,-0.2),brd=Nothing}
+    stack 0 (1,1) osStk (toList os) drawWith
+    
+    let psStk = Info{parent=g,tr=(0.02,0.5),sc=(0.43,0.43),pd=(0.05,0.0),brd=Nothing}
+    stack 0 (1,0) psStk (toList ps) drawWith
+    
+    return g
+;
 
-{- todo: generate color coding of player names and teleorb-chars.
+{- todo: add Draw String for text instance. -}
+
+instance Draw a => Draw (Space a) where
+  draw info mp = do
+    g <- newSVGElem "g" `under` parent info
+    if null mp
+    then
+      do t <- newSVGElem "text" `with` [
+           attr "x" =: "0.2px", attr "y" =: "0.45px",
+           attr "font-size" =: "0.4", attr "fill" =: "#777777",
+           attr "textLength" =: "0.7"
+           ] `under` g
+         set t [prop "innerHTML" =: "empty"]
+    else
+      let {- 0 based -}
+          nX = fromIntegral $ (1+) . maximum . map fst $ M.keys mp
+          nY = fromIntegral $ (1+) . subtract (fromEnum 'A') . fromEnum . maximum . map snd $ M.keys mp
+          pd = (0.005::Double,0.005::Double)
+          mp'  = nestMap mp
+          {-size availible for blocks-} 
+          szX  = ( 1 - nX*fst pd ) / nX
+          szY  = ( 1 - nY*snd pd ) / nY
+          blkSz = min szX szY
+          b = 2 / uncurry max (sc info) {- bordersize -}
+          hrzStk = info{parent=g,tr=(0,0),sc=(nX*blkSz,blkSz),pd,brd=Just b}
+          vrtStk y = info{parent=g,tr=(0,y),sc=(blkSz,blkSz),pd,brd=Just b}
+      in  stack 0 (0,1) hrzStk (M.toAscList mp')
+            $ \(_y,ln) hinf -> stack 0 (1,0)
+              (vrtStk (snd . tr $ hinf))
+              (M.toAscList ln)
+              $ \(_x,blk) vinf -> blk `drawWith` vinf
+    return g
+;
+
+-- nestMap :: (Ord ka, Ord kb) => M.Map (ka,kb) a -> M.Map kb (M.Map ka a)
+nestMap = M.foldlWithKey' f M.empty where
+  f m (x,y) a
+    | y == y    = M.insertWith M.union y (M.singleton x a) m {- todo -}
+    | otherwise = m
+
+{- todo: generate color coding of player names.
 more easily recognized in game.-}
 
+{-
+class DrawT a where
+  drawt :: a -> Info -> Double -> IO Elem
+  {- draw the frame at time t (in {0..1}) of the object -}
+;
 
+-}
 
 
 

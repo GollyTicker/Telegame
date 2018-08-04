@@ -30,20 +30,20 @@ noAction = fmap (fmap f)
 ;
 
 map1_P0 = Specific 0 (mkP True) (7,'D') $ fromString
-    ".P., ,_, , ,tx1 tx0, D00, \n\
+    ".P., ,_, , ,ta1 ta0, D00, \n\
     \  S, , , , ,      S,   S,S\n\
     \  S,S, , , ,      S,   S,S\n\
     \  S,S,S,S,S,      S,   S,S"
 ;
 
 map1_P1 = Specific 1 (mkPwith False [Key]) (7,'D') $ fromString
-    " , ,_, , , , .<P>(k). tx0 tx1 D00, \n\
+    " , ,_, , , , .<P>(k). ta0 ta1 D00, \n\
     \S, , , , , S,   S,S\n\
     \S,S, , , , S,   S,S\n\
     \S,S,S,S,S, S,   S,S"
 
 map2_P0_t0 = Specific 0 (mkP True) (7,'D') $ fromString
-    ".P., ,tx1 _, , ,tx0, D00, \n\
+    ".P., ,ta1 _, , ,ta0, D00, \n\
     \  S, ,     , , ,  S,   S,S\n\
     \  S,S,     , , ,  S,   S,S\n\
     \  S,S,    S,S,S,  S,   S,S"
@@ -55,7 +55,7 @@ map2_P0_t0T =
   $ noAction map2_P0_t0
 
 map2_P0_t1 = Specific 1 (mkP True) (7,'D') $ fromString
-    " ,   ,tx1 _, , ,tx0, D00, \n\
+    " ,   ,ta1 _, , ,ta0, D00, \n\
     \S,.P.,     , , ,  S,   S,S\n\
     \S,  S,     , , ,  S,   S,S\n\
     \S,  S,    S,S,S,  S,   S,S"
@@ -64,20 +64,20 @@ map2_P0_t1 = Specific 1 (mkP True) (7,'D') $ fromString
 map2_P0_t1T = 
   fmap (M.insert (1,'B')   $ BCT (Blank,EnvStays,Blank) M.empty  (one (Initiated  JumpUR,mkP True)))
   . fmap (M.insert (1,'A') $ BCT (Blank,EnvStays,Blank) M.empty  (one (Motion D R       ,mkP True)))
-  . fmap (M.insert (2,'A') $ BCT (Platform,EnvStays,Platform) (oneO (NoMotionT,TOrb 'x' 1)) (one (Completed  JumpUR,mkP True)))
+  . fmap (M.insert (2,'A') $ BCT (Platform,EnvStays,Platform) (oneO (NoMotionT,TOrb 'a' 1)) (one (Completed  JumpUR,mkP True)))
   $ noAction map2_P0_t1
 
 map2_P0_t2 = Specific 2 (mkP True) (7,'D') $ fromString
-    " , ,.P. tx1 _, , ,tx0, D00, \n\
+    " , ,.P. ta1 _, , ,ta0, D00, \n\
     \S, ,     , , ,  S,   S,S\n\
     \S,S,     , , ,  S,   S,S\n\
     \S,S,    S,S,S,  S,   S,S"
 ;
 
-mytp = Teleport {tpch = 'x', tpobjs = (MS.singleton (mkP True),MS.empty), tpsource = (2,(2,'A')), tpdest = (3,(5,'A'))} 
+mytp = Teleport {tpch = 'a', tpobjs = (MS.singleton (mkP True),MS.empty), tpsource = (2,(2,'A')), tpdest = (3,(5,'A'))} 
 map2_P0_t2T = 
-  fmap (M.insert (2,'A')   $ BCT (Platform,EnvStays,Platform) (oneO (TPsend,TOrb 'x' 1))  (one (Initiated  mytp,mkP True)))
-  . fmap (M.insert (5,'A') $ BCT (Blank,EnvStays,Blank)       (oneO (TPget,TOrb 'x' 0)) (one (Completed  mytp,mkP True)))
+  fmap (M.insert (2,'A')   $ BCT (Platform,EnvStays,Platform) (oneO (TPsend,TOrb 'a' 1))  (one (Initiated  mytp,mkP True)))
+  . fmap (M.insert (5,'A') $ BCT (Blank,EnvStays,Blank)       (oneO (TPget,TOrb 'a' 0)) (one (Completed  mytp,mkP True)))
   $ noAction map2_P0_t2
 
 map2_P0_t3 = Specific 3 (mkP True) (7,'D') $ fromString

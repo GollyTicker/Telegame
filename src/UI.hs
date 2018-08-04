@@ -6,6 +6,7 @@ import Haste.Events
 import Haste.Graphics.Canvas
 import Data.Foldable
 import qualified Data.MultiSet as MS
+import qualified Data.Map as M
 
 import Base
 import View()
@@ -13,8 +14,6 @@ import GameState
 import Maps hiding (main)
 
 import GraphicalView
-
-import System.IO.Unsafe -- debug tracing
 
 
 -- run with:
@@ -52,7 +51,7 @@ intToHexStr n = let (l,r) = divMod n 16 in toHex l ++ toHex r
 
 main :: IO ()
 main = do
-    title <- newElem "h4" `with` [prop "innerHTML" =: "Telegame Prototype"]
+    title <- newElem "h4" `with` [prop "innerHTML" =: "Telegame Prototype (under construction)"]
     appendChild documentBody title
     
     css <- newElem "link" `with` [ attr "href" =: "UI.css",
@@ -64,11 +63,12 @@ main = do
     holder <- newSVGElem "g"
     
     let size = 75
-        blockInf = Info{parent=holder,sc=(size,size),pd=(0,0),tr=undefined}
-        f i j = (i*(size+10)+15,j*(size+10)+15)
+        blockInf = Info{parent=holder,sc=(size,size),pd=(0,0),brd=Just 1,tr=undefined}
+        f i j = (i*(size+5)+15,j*(size+5)+15)
+    
     _ <- Key            `drawWith` blockInf{tr=f 0 0}
-    _ <- TOrb 'x' 0     `drawWith` blockInf{tr=f 0 1}
-    _ <- TOrb 'x' 1     `drawWith` blockInf{tr=f 0 2}
+    _ <- TOrb 'a' 0     `drawWith` blockInf{tr=f 0 1}
+    _ <- TOrb 'a' 1     `drawWith` blockInf{tr=f 0 2}
     
     _ <- Solid          `drawWith` blockInf{tr=f 1 0}
     _ <- Blank          `drawWith` blockInf{tr=f 1 1}
@@ -78,14 +78,30 @@ main = do
     _ <- Switch True    `drawWith` blockInf{tr=f 1 5}
     _ <- Switch False   `drawWith` blockInf{tr=f 1 6}
     
-    _ <- Player "L" True MS.empty 
-          `drawWith` blockInf{tr=f 2 0}
+    let players = [
+            Player "L" True MS.empty,
+            Player "N" False (MS.fromList [Key,TOrb 'b' 1,TOrb 'b' 0]),
+            Player "K" True (MS.fromList [TOrb 'c' 0, Key])
+          ]
+    
+    _ <- players!!0 `drawWith` blockInf{tr=f 2 0}
           
-    _ <- Player "N" False (MS.fromList [Key,TOrb 'y' 1,TOrb 'y' 0])
-          `drawWith` blockInf{tr=f 2 1}
+    _ <- players!!1 `drawWith` blockInf{tr=f 2 1}
           
-    _ <- Player "K" True (MS.fromList [TOrb 'z' 0, Key, Key])
-          `drawWith` blockInf{tr=f 2 2}
+    _ <- players!!2 `drawWith` blockInf{tr=f 2 2}
+    
+    _ <- BC (MS.fromList (take 2 players)) (MS.fromList [Key,TOrb 'a' 0]) Platform
+          `drawWith` blockInf{tr= f 3 0}
+    
+    _ <- BC (MS.fromList (init players)) (MS.empty) (Switch True)
+          `drawWith` blockInf{tr= f 3 1}
+
+    _ <- BC (MS.singleton (players!!1)) (MS.fromList [Key,TOrb 'd' 0,TOrb 'd' 1]) (Door 2 1)
+          `drawWith` blockInf{tr= f 3 2}
+    
+    _ <- sobservations map2_P0_t0
+          `drawWith` blockInf{tr=(f 4 0),sc=(800,800)}
+              {- sc = bounds on the size of the drawn spacetime -}
     
     appendChild svg holder
     
@@ -99,7 +115,7 @@ main = do
 
 mkSVGenv docBody = do
   svgEl <- newSVGElem "svg" `with`
-    [attr "version" =: "1.1", attr "width" =: "500", attr "height" =: "700",
+    [attr "version" =: "1.1", attr "width" =: "1500", attr "height" =: "850",
     attr "display" =: "block", attr "xmlns" =: svgNS]
   
   appendChild docBody svgEl
