@@ -4,7 +4,7 @@
 module GameState (
      mkGSfromObs
     ,initGS
-    ,addInput
+    ,runTurn
     ,finalizeHistory
     
     {- debug -}
@@ -248,22 +248,34 @@ findPWorldInGameState GS{gsobs} sp@Specific{stime,splayer} = do
     mpwmpwt
 ;
 
-{- lesson learned: need to reduce GameState even further down to
-    actual player-inputs at Specific TimePos. -}
+{- IMPORTANT TODO:
+    I need a way to allow multiple players to move at once.
+    If only once player moves, then inserting their observations
+    will lead to contradictions lateron on the other player - even
+    for valid inputs.
+    What can come to rescue, is that Observations may only be added
+    in a batch for each Time. Then once all players have their inputs
+    fixed, there is no room left and one can add all of their
+    collective observations together.
+    -}
 {- USING: computeCHfromObs OK,
           data-type GameState OK,
           plyrInputAsObs OK
   ASSUME: gamestate has valid consistency history pre-computed
           and where the gamestate istself is already consistent.
   FUNCTION:
-    adds the players input into the gamestate.
-    either returns with immediate inconsistency warnings
-    or returns a new updated gamestate
+    runs all the players actions on the current gamestate at time
+    t to t+1. It checks, that the map of actions truely contains
+    all actionable players - otherwise not all actions are defined and
+    it errors with "not enough actions".
+    It might succeed with a new successive gamestate with
+    new observations and an updates consistency history OR
+    it returns contradiction warnings.
 -}
-addInput :: GameState -> Specific PlayerInput -> MayContra GameState
-addInput gs0 spi = do
+runTurn :: GameState -> Time -> M.Map Player (MultiSet PlayerInput) -> MayContra GameState
+runTurn gs0 spi = undefined {-do
   pw <- findPWorldInGameState gs0 spi
   let obs = inputToObs (fmap (sobservations pw,) spi)
-  addToObservations obs gs0
+  addToObservations obs gs0-}
 ;
 

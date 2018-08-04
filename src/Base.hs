@@ -130,7 +130,7 @@ data Player = Player { pname :: String {- must be non-empty -}, peyes :: Bool, p
 -- these positions have a new BlockSt specified as the desired state
 -- type AnticipationT = Space (Maybe BlockTr)
 
-type PWorld a = OpenObs a
+type PWorld a = OpenObs a 
 class (Show (This a),Typeable a) => Block a where
   type OpenObs a
   type ClosedObs a
