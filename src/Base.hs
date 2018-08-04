@@ -57,6 +57,7 @@ module Base(
 
 {-
 Main todo:
+. add extensions: Safe, Trusworthy (fromWhat I wish I knew when learning haskell)
 . implement game state tansition function
   . extend Player to have immediate past memory?
   . actually. that is alread implemented using ClosedObs.
