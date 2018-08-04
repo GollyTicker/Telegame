@@ -15,7 +15,7 @@
    version="1.1"
    id="svg8"
    inkscape:version="0.92.3 (unknown)"
-   sodipodi:docname="teleorb-0.svg"
+   sodipodi:docname="teleorb-c-0.svg"
    inkscape:export-filename="/home/swaneet/github/Telegame/src/key.png"
    inkscape:export-xdpi="96"
    inkscape:export-ydpi="96">
@@ -29,7 +29,7 @@
      inkscape:pageopacity="0.0"
      inkscape:pageshadow="2"
      inkscape:zoom="97.02"
-     inkscape:cx="0.52580654"
+     inkscape:cx="-0.489448"
      inkscape:cy="0.86854566"
      inkscape:document-units="px"
      inkscape:current-layer="layer1"
@@ -63,23 +63,15 @@
        cy="296.50055"
        rx="0.46048626"
        ry="0.46707046"
-       style="opacity:1;fill:none;stroke:#222a62;stroke-width:0.05869402;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       style="opacity:1;fill:none;stroke:#656a8d;stroke-width:0.05869402;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
        inkscape:label="#path3715" />
     <ellipse
        id="middle"
-       cx="0.50072408"
-       cy="296.49304"
-       rx="0.37056565"
-       ry="0.3648439"
-       style="opacity:1;fill:none;stroke:#c2c8d4;stroke-width:0.07235878;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.80099505"
+       cx="0.50345117"
+       cy="296.50662"
+       rx="0.33828929"
+       ry="0.33256754"
+       style="opacity:1;fill:none;stroke:#c2c8d4;stroke-width:0.13;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.80099505"
        inkscape:label="#path3715-3" />
-    <ellipse
-       id="inner"
-       cx="0.50254768"
-       cy="296.49603"
-       rx="0.25678238"
-       ry="0.25281754"
-       style="opacity:1;fill:none;stroke:#7681cf;stroke-width:0.07245503;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:0.68656719"
-       inkscape:label="#path3715-3-6" />
   </g>
 </svg>
