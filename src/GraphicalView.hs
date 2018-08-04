@@ -5,6 +5,10 @@ module GraphicalView (
     ,newSVGElem
     ,Info(..)
     ,Draw(..)
+    ,under
+    ,tell
+    ,tellW
+    
   ) where
 
 import Base

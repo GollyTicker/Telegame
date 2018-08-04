@@ -15,6 +15,8 @@ import Maps hiding (main)
 
 import GraphicalView
 
+teledoc_href = "https://docs.google.com/document/d/1AUDKfi1EzKL3sU7u29x7SZwsUpbtguV7bgtn6GJ2288/edit?usp=sharing"
+github_href  = "https://github.com/GollyTicker/Telegame"
 
 -- run with:
 {-
@@ -51,16 +53,20 @@ intToHexStr n = let (l,r) = divMod n 16 in toHex l ++ toHex r
 
 main :: IO ()
 main = do
-    title <- newElem "h4" `with` [prop "innerHTML" =: "Telegame Prototype (under construction)"]
-    appendChild documentBody title
+    _ <- newElem "h4" `with` [prop "innerHTML" =: "Telegame Prototype (under construction)"]
+      `under` documentBody
     
-    css <- newElem "link" `with` [ attr "href" =: "UI.css",
+    _ <- newElem "link" `with` [ attr "href" =: "UI.css",
         attr "rel" =: "stylesheet", attr "type" =: "text/css"]
-    appendChild documentHead css
-
+      `under` documentBody
+    
+    _ <- newElem "span" `with` [prop "innerHTML" =:
+      ("<a href=\""++teledoc_href++"\">Telegame mechanics: How this game works</a>. "
+       ++"<a href=\""++github_href++"\">Codebase</a>")] `under` documentBody
+    
     svg <- mkSVGenv documentBody
     
-    holder <- newSVGElem "g"
+    holder <- newSVGElem "g" `under` svg
     
     let size = 75
         blockInf = Info{parent=holder,sc=(size,size),pd=(0,0),brd=Just 1,tr=undefined}
@@ -102,8 +108,6 @@ main = do
     _ <- sobservations map2_P0_t0
           `drawWith` blockInf{tr=(f 4 0),sc=(800,800)}
               {- sc = bounds on the size of the drawn spacetime -}
-    
-    appendChild svg holder
     
     _ <- onEvent documentBody KeyDown $
       ( \_ -> {- todo: scroll by A/D or left/right arrow through spacetime. -}
