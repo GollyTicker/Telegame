@@ -21,7 +21,6 @@ executable telegame-proto
                        containers,
                        QuickCheck,
                        multiset >= 0.3.4 && < 1
-                       -- liquidhaskell >= 0.8.2.4 && < 1
   other-modules:       Base, ViewBase, Interference, GameState, View, Maps
 
 Test-Suite tests-basic
@@ -33,5 +32,4 @@ Test-Suite tests-basic
                        containers,
                        QuickCheck,
                        multiset >= 0.3.4 && < 1
-                       -- liquidhaskell >= 0.8.2.4 && < 1
   other-modules:       Base, ViewBase, Interference, GameState, View

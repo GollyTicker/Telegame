@@ -1,12 +1,13 @@
 {-# LANGUAGE FlexibleInstances, ScopedTypeVariables, StandaloneDeriving #-}
 {-# OPTIONS_GHC -Wall -fno-warn-orphans #-}
 
-module View where
+module View (
+    fromString
+  )
+  where
 
-import Base
-import Data.Proxy
+import Interference
 import ViewBase
-import Interference()
 import Data.List (intercalate,transpose)
 import qualified Data.Map as M
 import qualified Data.Set as S

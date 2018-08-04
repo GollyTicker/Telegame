@@ -3,7 +3,12 @@
 
 {- view instances for simples types. needed by Interference.hs for show on error -}
 
-module ViewBase where
+module ViewBase(
+     split
+    ,toStrings
+    ,safeLast
+  )
+  where
 
 import Base
 import Data.List (intercalate)

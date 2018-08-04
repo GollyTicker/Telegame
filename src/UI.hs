@@ -18,6 +18,9 @@ import GraphicalView
 teledoc_href = "https://docs.google.com/document/d/1AUDKfi1EzKL3sU7u29x7SZwsUpbtguV7bgtn6GJ2288/edit?usp=sharing"
 github_href  = "https://github.com/GollyTicker/Telegame"
 
+-- TODO: send mails to ppl in notizheft. telegame mechanics document
+--      + GameDevConf + Pro Helvetia + Philomeane/Stray Fawn
+
 -- run with:
 {-
 in folder src:

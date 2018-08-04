@@ -1,9 +1,54 @@
 {-# LANGUAGE TypeFamilies, DeriveFunctor,DeriveDataTypeable,FlexibleContexts #-}
 {-# OPTIONS_GHC -Wall #-}
 
-module Base
+module Base(
+     module Data.Proxy
+    ,Time,Pos
+    ,Player(..)
+    ,PWorld
+    ,Block(..)
+    ,BlockSt(..)
+    ,BC_Cons(..)
+    ,BCT_Cons(..)
+    ,BlockTr(..)
+    ,fst3,snd3,thd3
+    ,Timed
+    ,Space
+    ,Specific(..)
+    ,Dir(..)
+    ,PhyObjT(..)
+    ,rundir
+    ,invDir
+    ,applyDir
+    ,PhyObj(..)
+    ,Env(..)
+    ,EAOnce(..)
+    ,EARep(..)
+    ,EnvT(..)
+    ,PlayerInput(..)
+    ,PlayerAction(..)
+    ,runpa
+    ,runpat
+    ,toDirpa
+    ,fromDirpa
+    ,PlayerT(..)
+    ,runMayFail
+    ,failing
+    ,success
+    ,maybeToEither
+    ,TotalObservations
+    ,MayFail
+    ,GameState(..)
+    ,Field
+    ,TimePos
+    ,SpaceTime
+    ,TeleportInfo
+    ,CH_Global
+    ,ConsHistory(..)
+    ,CondRes
+    ,ConditionsChecker(..)
+  )
   where
-
 
 -- for a general explanation:
 -- see telegame workbook where the general approach
@@ -23,7 +68,6 @@ Main todo:
   . add more properties and tests for quickcheck
 . look at contradiction messages for the example and improve them.
   . make hunit tests? that would be nice
-. use comonads abstraction or parsing for the condition checks?
 . use blaze to generate the html? https://jaspervdj.be/blaze/tutorial.html
 . great idea for touch-input:
   . when mobile browser, make only static screens rather than
@@ -58,12 +102,6 @@ Licensing:
   . Haste BSD-3-Clause http://hackage.haskell.org/package/haste-compiler-0.6.0.0/src/LICENSE
   . Stack BSD-3-Clause https://github.com/commercialhaskell/stack/blob/master/LICENSE
   . QuickCheck BSD-3-Clause
-
-
-Liquid Haskell:
-  . mini intro: https://ucsd-progsys.github.io/liquidhaskell-blog/
-  . long book: http://ucsd-progsys.github.io/liquidhaskell-tutorial/01-intro.html#/sample-code
-  . stack exec liquid src/Base.hs src/Interference.hs ...
 -}
 
 import Data.Proxy
@@ -78,12 +116,6 @@ type Pos = (Int,Char)
 data Player = Player { pname :: String {- must be non-empty -}, peyes :: Bool, pinventory :: MultiSet PhyObj}
   deriving (Eq,Ord)
   {- name,(removed age for loops) , True means eyes are open, inventory -}
-
--- identificaiton based equality for players.
--- a player is identical to another player,
--- if they have the same name string and have the same age
-eqById :: Player -> Player -> Bool
-eqById (Player s {-_t-} _ _) (Player s' {-_t'-} _ _) = s == s' -- && _t == _t'
 
 type PWorld a = OpenObs a
 class (Show (This a),Typeable a) => Block a where
@@ -188,7 +220,7 @@ data Specific a =
     ,splayer :: Player
     ,ssize :: Pos
     ,sobservations :: a
-  } -- beware. a player is not uniquely identified. multiple indistinguishable players might have the same view. but that'^s okay, because their observations will be identical as well.
+  } -- beware. a player is not uniquely identified. multiple indistinguishable players might have the same view. but that's okay, because their observations will be identical as well.
  deriving (Eq, Ord, Functor)
 ;
 
@@ -247,7 +279,7 @@ data EnvT = EnvStays | EnvUsedOnce EAOnce | EnvUsedMult [EARep]
   deriving (Eq,Ord,Data,Typeable)
 
 -- TODO: integrate PlayerActionTotal...
-data PlayerTotal =
+data PlayerInput =
   PAT { eyesClosedBeg :: Bool -- True, if the eyes are closed in the beginning
         ,anticipationBeg :: Antcpt BlockSt -- player can anticipate anything. though only their observations count
         ,phyAction :: PlayerAction
@@ -381,13 +413,13 @@ runpat _init mot compl complf pat =
 -- PlayerWorld  ~= Time x PlayerID x Space BlockSt
 -- PlayerWorldT ~= Time x PlayerID x Space BlockTr
 
-type MayFail a = Either String a
+type MayFail a = Either [CondRes] a
 
-runMayFail :: (String -> a) -> (b -> a) -> MayFail b -> a
+runMayFail :: ([CondRes] -> a) -> (b -> a) -> MayFail b -> a
 runMayFail = either
 
 failing :: String -> MayFail a
-failing = Left
+failing = Left . (:[])
 
 success :: a -> MayFail a
 success = Right

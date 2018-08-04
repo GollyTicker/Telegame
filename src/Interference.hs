@@ -7,7 +7,16 @@
 {-# OPTIONS_GHC -Wall -fno-warn-orphans -fno-warn-missing-signatures #-}
 #endif
 
-module Interference where
+module Interference(
+     module Base
+    ,interferesWith
+    ,interferesWithT
+    ,inferMinimal
+    ,inferMinimalT
+    ,adjustGlobalInfo
+    ,isContradiction
+  )
+  where
 
 import Base
 import Data.Data
@@ -304,4 +313,7 @@ adjustGlobalInfo bct ch0 = foldM f ch0 (bctps bct) where
 -- it searches for the simplest BlockSt that satisfies it.
 inferMinimal :: BC_Cons -> MayFail BlockSt
 inferMinimal _ = failing "TODO: implement inferMinimal"
--- TODO: inferMinimalT
+
+inferMinimalT :: BCT_Cons -> MayFail BlockSt
+inferMinimalT _ = failing "TODO: implement inferMinimalT"
+

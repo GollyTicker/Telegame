@@ -4,14 +4,13 @@
 module GameState
   where
 
-import Base
-import Data.Proxy
 import Interference
 import View() -- Show instances for error messages
 import qualified Data.Set as S
 import qualified Data.Map as M
 --import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MS
+import Data.MultiSet (MultiSet)
 -- import Data.Foldable
 -- import Data.Maybe (maybeToList)
 import Control.Monad (foldM)
@@ -185,7 +184,7 @@ insertCHTr :: TimePos -> BlockTr -> ConsHistory -> ConsHistory
 insertCHTr (t,pos) b ch = ch { chspace = M.adjust (M.adjust (second (const (Just b))) pos) t (chspace ch)}
 
 
-{- MAIN FUNCTION: concreteHistory. should use runCondChecker -}
+{- MAIN FUNCTION: concreteHistory. should use runChecks -}
 -- specializes all Unkowns to a unique history
 -- or fails with contradictions.
 -- this is called at the end of all inputs to check if the room is solved.
@@ -218,8 +217,10 @@ default2DMap (sx,sy) e =
                           ['A'..sy]
 ;
 
-runTurn :: GameState -> S.Set (Specific PlayerTotal) -> MayFail GameState
-runTurn = undefined
+{- concreteHistory,computeCHfromObs -}
+
+addInput :: GameState -> MultiSet (Specific PlayerInput) -> Either [CondRes] GameState
+addInput = undefined
 {-
 the gamestate argument to runTurn is assumed to be self-consistent.
 
