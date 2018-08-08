@@ -146,9 +146,9 @@ contradictions ch = {- we assume that out-of-bounds is a problem. -}
      x <- [0..maxX]
      y <- ['A'..maxY]
      let curr = (t,(x,y))
-         checkbc  = maybe []{- unknowns ok -} (\(bc::BlockSt)  -> runChecks curr bc ch)
-         checkbct = maybe []{- unknowns ok -} (\(bct::BlockTr) -> runChecks curr bct ch)
-     uncurry (++) $ todo --atCHboth curr ["block(T) "++show curr++" out-of-bounds"] checkbc checkbct ch
+         checkbc  = maybe []{- unknowns ok -} (\(bc::BlockSt)  -> CR <$> runChecks curr bc ch)
+         checkbct = maybe []{- unknowns ok -} (\(bct::BlockTr) -> CR <$> runChecks curr bct ch)
+     uncurry (++) $ atCHboth curr [(CR::ConsRes BlockSt -> ConsResB) $ notokc $ "block(T) "++show curr++" out-of-bounds"] checkbc checkbct ch
 ;
 
 {- MAIN FUNCTION: runChecks (from Block class) -}
@@ -156,7 +156,7 @@ runChecks :: Block b => TimePos -> b -> ConsHistory -> [ConsRes b]
 runChecks curr b ch =
   let missing = findMissingIndices (cneeds cc) ch
       cc = interferesWithBlock curr b
-  in  filter isContradiction $ selfconsistent b : 
+  in  filter isContradictionc $ selfconsistent b : 
         if null missing
           then [runCons cc (flatten (chspace ch)) (chglobal ch)]
           else map (listFailReferenceOutOfBounds curr) . toList $ missing
@@ -169,7 +169,7 @@ findMissingIndices :: S.Set TimePos -> ConsHistory -> S.Set TimePos
 findMissingIndices ks = (ks S.\\) . M.keysSet . flatten . chspace
 
 listFailReferenceOutOfBounds :: TimePos -> TimePos -> ConsRes b
-listFailReferenceOutOfBounds curr other = notok $ show curr ++ " references out-of-bounds "++show other
+listFailReferenceOutOfBounds curr other = notokc $ show curr ++ " references out-of-bounds "++show other
 
 atCHSt :: TimePos -> a {- out of bounds -} -> (Maybe BlockSt -> a) -> ConsHistory -> a
 atCHSt tpos z f = fst . atCHboth tpos z f (const (error "atCH[1]: this cannot happen"))

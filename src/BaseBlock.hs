@@ -23,17 +23,19 @@ module BaseBlock (
     ,Field
     ,TeleportInfo
     ,CH_Global
+    ,unknownGlobal
     ,ConsHistory(..)
-    ,ConsFail
-    ,ConsRes
-    ,ConsResB(..)
-    ,Constraint(..)
+    ,ConsDesc
+    ,STCons(..)
+    ,ConsHistoryP
+    ,Expr(..)
+    ,foldExpr
+--    ,ConsRes
     ,PlayerInput(..)
   ) where
 
 import Base
 import Data.Data
-import qualified Data.Set as S
 import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MS
 import qualified Data.Map as M
@@ -60,11 +62,13 @@ class (Show (This a),Typeable a) => Block a where
   data This a
   this :: This a
   getter :: This a -> Field -> Maybe a
-  on_standable :: a -> Bool
-  in_standable :: a -> Bool
-  permeable :: Show b => TimePos -> b -> a -> ConsRes a
-  selfconsistent :: a -> ConsRes a
-  interferesWithBlock :: TimePos -> a -> Constraint a
+  setter :: This a -> Cons a -> (Cons BlockSt,Cons BlockTr)
+  on_standable :: This a -> TimePos -> ConsDesc -> STCons
+  in_standable :: This a -> TimePos -> ConsDesc -> STCons
+  permeable :: This a -> TimePos -> ConsDesc -> STCons
+  leastc :: Cons a
+  selfconsistent :: a -> STCons
+  interferesWithBlock :: TimePos -> a -> STCons
   reduceToClosed :: Proxy a -> OpenObs a -> ClosedObs a
   applypwObs :: Proxy a -> PWorld a -> (OpenObs a -> b) -> (ClosedObs a -> b) -> b
 ;
@@ -123,9 +127,9 @@ sameFocus sp1 sp2 =
 
 
 {- MAY CONTRADICT: type for a possibly contradiction-raising vale -}
-type MayContra a = Either [ConsFail] a
+type MayContra a = Either [ConsDesc] a
 
-runMayContra :: ([ConsFail] -> a) -> (b -> a) -> MayContra b -> a
+runMayContra :: ([ConsDesc] -> a) -> (b -> a) -> MayContra b -> a
 runMayContra = either
 
 failing :: String -> MayContra a
@@ -161,6 +165,8 @@ type Field = (Maybe BlockSt, Maybe BlockTr)
 type TeleportInfo = PlayerAction {- only Teleport case allowed -}
 {- tpos before starting tp, teleorb-pair identifier, transfered objects, tpos after arrival -}
 type CH_Global = M.Map Char TeleportInfo -- no in map is eqivalient to unknown.
+unknownGlobal :: CH_Global
+unknownGlobal = M.empty
 data ConsHistory =
   CH {
     chspace  :: Timed (Space Field)
@@ -232,7 +238,7 @@ Distinction:
       one which is made of minimal elements only. it only grows,
       when condition-requirements from other places are checked.
       new featureswill only be added, once they are needed.s
-      Choice (e.g. on standable vs in standable) will try to first
+ OK   Choice (e.g. on standable vs in standable) will try to first
       make any1 of them concrete and see, whether one can stay on them.
       otherwise, the choice is deferred at a worse case of exp. time.
       practically speaking, ground-check cannot become the feared exp-blowup,
@@ -243,20 +249,40 @@ Distinction:
    concretize the CondHistory to a unique ConsHistory.
 -}
 
-{- result of a constaint check. either a string describing
-the contradiction - or a successful constraint/value.
--}
-type ConsFail = String
-type ConsRes b = Either ConsFail (Cons b)
-data ConsResB = forall b. Block b => CR { unCR :: ConsRes b}
+
+{- STCons == Space-Time-Constraint. used for constraint creation.
+  an unassociated key means, that there is no constraint on that field.
+  [.] denoted choice. -}
+newtype STCons = STC {getSTCons :: [ConsHistoryP]}
+{- type denoting partial constructive constraints on history.
+constraint on CH_Global, on space-time blocks and it's reason
+for being there. -}
+type ConsHistoryP = Expr (CH_Global,M.Map TimePos (Cons BlockSt, Cons BlockTr),ConsDesc)
+type ConsDesc = String
+-- could also use tree.
+data Expr a = Leaf a | And (Expr a) (Expr a)
+  deriving (Show,Eq,Ord)
+;
+foldExpr :: (a -> b) -> (b -> b -> b) -> Expr a -> b
+foldExpr leaf andExpr = go
+  where go e = case e of
+            Leaf x -> leaf x
+            And e1 e2 -> andExpr (go e1) (go e2)
+
+--type ConsRes = Either ConsFail
+{-runCons :: M.Map TimePos Field -> CH_Global -> STCons -> [ConsRes]
+runCons = undefined-}
 {- a constraint. expects the current cons-history spacetime as well
-   as its global information. returns a contradiction -}
-data Constraint b =
+   as its global information. returns a list of constraints
+   conjuncted on the space-time. the list itself represents choice.
+   (e.g. if multiple different constraint are allowed).
+   -}
+{-data Constraint =
   C {
      cneeds  :: S.Set TimePos
-    ,runCons :: M.Map TimePos Field -> CH_Global -> ConsRes b
+    ,runCons :: M.Map TimePos Field -> CH_Global -> [ConsRes]
   }
-;
+;-}
 
 {- ================= PLAYER-INPUT ===============
 precondition:

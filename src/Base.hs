@@ -92,8 +92,14 @@ todo = undefined
 type Time = Int
 type Pos = (Int,Char)
 type TimePos = (Time,Pos)
+{-
+class Count a where
+  count :: [a]
+;-}
 data Dir = L | U | R |D
   deriving (Eq,Ord,Data,Typeable)
+;
+--instance Count Dir where count = [L,U,R,D] 
 
 data PhyObj = TOrb Char Int {- identifier, int is 0 or 1 -}
             | Key
@@ -110,7 +116,7 @@ data Env = Door { dneeds :: Int, dhas :: Int } {- # keys needed, # keys inside. 
       mbCurrT :: Int, -- both timers have to be <=99
       mcBehind :: Env
     } -}
-  deriving (Eq, Ord,Data,Typeable)
+  deriving (Eq,Ord,Data,Typeable)
 ;
 
 data Player = Player { pname :: String {- must be non-empty -}, peyes :: Bool, pinventory :: MultiSet PhyObj}
@@ -131,7 +137,7 @@ data EnvT = EnvStays | EnvUsedOnce EAOnce | EnvUsedMult [EARep]
 ;
 
 data EAOnce = PressAndHold -- | more options later...
-  deriving (Eq,Ord,Data,Typeable)
+  deriving (Eq,Ord,Enum,Data,Typeable)
 data EARep = TraverseDoor
   | InsertKey
   | TakeKey
