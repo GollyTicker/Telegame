@@ -87,6 +87,128 @@ import Data.MultiSet (MultiSet)
 type Time = Int
 type Pos = (Int,Char)
 type TimePos = (Time,Pos)
+data Player = Player { pname :: String {- must be non-empty -}, peyes :: Bool, pinventory :: MultiSet PhyObj}
+  deriving (Eq,Ord)
+  {- name,(removed age for loops) , True means eyes are open, inventory -}
+
+-- type Anticipation = Space (Maybe BlockSt)
+-- an anticipation concerns only the positions with Just.
+-- these positions have a new BlockSt specified as the desired state
+-- type AnticipationT = Space (Maybe BlockTr)
+
+type PWorld a = OpenObs a 
+class (Show (This a),Typeable a) => Block a where
+  type OpenObs a
+  type ClosedObs a
+  type Cons a
+  type Antcpt a
+  type Other a
+  data This a
+  this :: This a
+  getter :: This a -> Field -> Maybe a
+  on_standable :: a -> Bool
+  in_standable :: a -> Bool
+  permeable :: Show b => TimePos -> b -> a -> CondRes
+  selfconsistent :: a -> CondRes
+  interferesWithBlock :: TimePos -> a -> ConditionsChecker
+  {-@ reduceToClosed  :: Proxy a -> OpenObs a -> ClosedObs a @-}
+  reduceToClosed :: Proxy a -> OpenObs a -> ClosedObs a
+  applypwObs :: Proxy a -> PWorld a -> (OpenObs a -> b) -> (ClosedObs a -> b) -> b
+;
+
+-- what the contents of a block can be.
+-- during state and transition.
+-- using multisets for objects, as they can occur multiple times
+-- due to time-travel
+data BlockSt = BC { bcps :: MultiSet Player, bcos :: MultiSet PhyObj, bcenv :: Env }
+  deriving (Eq,Ord)
+;
+
+newtype BC_Cons = BCC BlockSt
+  deriving (Ord,Eq)
+-- OneP Player | OneO PhyObj | Bgrd Env
+-- => e.g. OneP p1 & OneP p1 & OneP p2 & Bgrd (Door 0 0) <=>
+-- BSCons MultiSet(p1,p1,p2) + Door 0 0 ==> ".P1. .P1. .P2. D00"
+;
+
+data BCT_Cons =
+  BCTC {
+    bctcInit :: Maybe Env
+   ,bctcEnd  :: Maybe Env
+   ,bctcToFutrP :: MultiSet Player
+   ,bctcToFutrO :: MultiSet PhyObj
+   ,bctcFromPastP :: MultiSet Player
+   ,bctcFromPastO :: MultiSet PhyObj
+} deriving (Eq,Ord)
+
+data BlockTr = BCT {
+    bctenv  :: (Env,EnvT,Env) -- old env, environment change, new env (possibly same)
+   ,bctos   :: M.Map PhyObj (MultiSet PhyObjT) -- object motion. since objects can be multiple, each object is identified with a multiset of motions
+   ,bctps   :: MultiSet (Player,PlayerT,Player) -- player before -> action -> player after
+  }
+  deriving (Eq,Ord)
+;
+fst3 :: (a,b,c) -> a
+fst3 (a,_,_) = a
+snd3 :: (a,b,c) -> b
+snd3 (_,b,_) = b
+thd3 :: (a,b,c) -> c
+thd3 (_,_,c) = c
+
+{-
+IMPORTANT CONDITIONS:
+An unknown BlockSt has to be uniquely determinable from
+fully known neighboring BlockContentTs and distant blocks it interferes with (e.g. jump or teleport).
+same holds for BlockTr.
+=> using explicit constraints. BC_Cons and BCT_Cons
+-}
+
+-- Specific BlockSt and Specific ClosedObs
+-- as well as Specific BlockSt (for open eyes view)
+-- and Specific (Pos,BlockSt) (with a single map entry) (for closed eyes)
+
+-- if the eyes are opened during the transition, then
+-- the transition between intial and final state of the room
+-- is recorded as observation.
+-- if the eyes are opened/closed during the beginning/end of transition
+-- then they are observed accordingly.
+-- Thus it's possible to open the eyes for an infinitesimal
+-- span of time inbetween consecutive turns.
+-- Which means, that the player observed the state of the
+-- room, when all was invisible.
+
+{- observations for transition phases -}
+-- Specific OpenObsT and Specific ClosedObsT
+-- where ´time´ corresponds to beginning time of the transition
+-- view of the room during time-transition
+
+-- observation during opened eyes. the entire map
+-- type OpenObsT = Specific (Space BlockTr)
+
+{- observation, if the eyes are closed during transition -}
+-- for an explanation: see Telegame workbook
+-- We thus only need to collect a list of observed blicks/fields.
+-- type ClosedObsT = Specific (Space BlockTr) -- == OpenObsT
+
+type Timed a = M.Map Time a
+type Space a = M.Map Pos a
+-- current observations of a specific player of a room-view
+data Specific a =
+  Specific { -- the observations from the perspective of a specific player
+     stime :: Time
+    ,splayer :: Player
+    ,ssize :: Pos
+    ,sobservations :: a
+  } -- beware. a player is not uniquely identified. multiple indistinguishable players might have the same view. but that's okay, because their observations will be identical as well.
+ deriving (Eq, Ord, Functor)
+;
+
+sameFocus :: Specific a -> Specific b -> Bool
+sameFocus sp1 sp2 =
+  stime sp1 == stime sp2
+  && splayer sp1 == splayer sp2
+  && ssize sp1 == ssize sp2
+>>>>>>> reduce-to-player-inputs
 
 data Dir = L | U | R |D
   deriving (Eq,Ord,Data,Typeable)

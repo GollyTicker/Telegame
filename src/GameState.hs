@@ -22,7 +22,6 @@ import Data.Foldable
 --import Data.Maybe (listToMaybe)
 import Control.Monad (foldM)
 import Control.Arrow (first,second,(***))
--- first: apply function on fst-element in tuple; f *** g = \(a,b) -> (f a,g b)
 
 -- import Debug.Trace
 
@@ -227,6 +226,40 @@ extendCHTo tMax ch@CH{chsize,chspace} =
   in  ch{chspace = new}
 
 {-
+=======
+{- IMPORTANT TODO:
+    I need a way to allow multiple players to move at once.
+    If only once player moves, then inserting their observations
+    will lead to contradictions lateron on the other player - even
+    for valid inputs.
+    What can come to rescue, is that Observations may only be added
+    in a batch for each Time. Then once all players have their inputs
+    fixed, there is no room left and one can add all of their
+    collective observations together.
+    -}
+{- USING: computeCHfromObs,
+          data-type GameState,
+          findPWorldInGameState
+          inputToObs,
+          noActionSucc
+  ASSUME: gamestate has valid consistency history pre-computed
+          and where the gamestate istself is already consistent.
+  FUNCTION:
+    runs all the players actions on the current gamestate at time
+    t to t+1. It checks, that the map of actions truely contains
+    all actionable players - otherwise not all actions are defined and
+    it errors with "not enough actions".
+    It might succeed with a new successive gamestate with
+    new observations and an updates consistency history OR
+    it returns contradiction warnings.
+-}
+runTurn :: GameState -> Time -> M.Map Player (MultiSet PlayerInput) -> MayContra GameState
+runTurn gs0 t mmspi = undefined {-do
+  pw <- findPWorldInGameState gs0 spi
+  let obs = inputToObs (fmap (sobservations pw,) spi)
+  addToObservations obs gs0-}
+;
+
 addToObservations :: (Time,PWorld BlockTr,PWorld BlockSt) -> GameState -> MayContra GameState
 addToObservations (t,pobsT,pobs) (GS obs ch0) = do
   let newObs = M.fromList [(t  ,(MS.empty         , MS.singleton pobsT)),
