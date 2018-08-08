@@ -4,7 +4,7 @@
 module GameState (
      mkGSfromObs
     ,initGS
-    ,addInput
+    ,runTurn
     ,finalizeHistory
     
     {- debug -}
@@ -226,6 +226,7 @@ extendCHTo tMax ch@CH{chsize,chspace} =
           <$> [fst chsize..tMax]
   in  ch{chspace = new}
 
+{-
 addToObservations :: (Time,PWorld BlockTr,PWorld BlockSt) -> GameState -> MayContra GameState
 addToObservations (t,pobsT,pobs) (GS obs ch0) = do
   let newObs = M.fromList [(t  ,(MS.empty         , MS.singleton pobsT)),
@@ -247,23 +248,24 @@ findPWorldInGameState GS{gsobs} sp@Specific{stime,splayer} = do
     [concat ["[t = ",show stime,"]: Player ",show splayer," not found"]]
     mpwmpwt
 ;
+-}
 
-{- lesson learned: need to reduce GameState even further down to
-    actual player-inputs at Specific TimePos. -}
 {- USING: computeCHfromObs OK,
           data-type GameState OK,
           plyrInputAsObs OK
   ASSUME: gamestate has valid consistency history pre-computed
           and where the gamestate istself is already consistent.
   FUNCTION:
-    adds the players input into the gamestate.
+    adds the players inputs into the gamestate.
     either returns with immediate inconsistency warnings
-    or returns a new updated gamestate
+    or returns a new updated gamestate.
+    errors also, if inputs for any player in that turn is missing.
 -}
-addInput :: GameState -> Specific PlayerInput -> MayContra GameState
-addInput gs0 spi = do
+runTurn :: MultiSet (Specific PlayerInput) -> GameState -> MayContra GameState
+runTurn mspi gs0 = undefined {- todo:implement.
+
   pw <- findPWorldInGameState gs0 spi
   let obs = inputToObs (fmap (sobservations pw,) spi)
-  addToObservations obs gs0
+  addToObservations obs gs0 -}
 ;
 

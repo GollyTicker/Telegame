@@ -28,7 +28,6 @@ module Base(
     ,EARep(..)
     ,EnvT(..)
     ,PlayerInput(..)
-    ,inputToObs
     ,PlayerAction(..)
     ,runpa
     ,runpat
@@ -206,10 +205,6 @@ same holds for BlockTr.
 -- is recorded as observation.
 -- if the eyes are opened/closed during the beginning/end of transition
 -- then they are observed accordingly.
--- Thus it's possible to open the eyes for an infinitesimal
--- span of time inbetween consecutive turns.
--- Which means, that the player observed the state of the
--- room, when all was invisible.
 
 {- observations for transition phases -}
 -- Specific OpenObsT and Specific ClosedObsT
@@ -329,23 +324,6 @@ data PlayerInput =
         ,antcptT :: Antcpt BlockTr
         ,antcpt1 :: Antcpt BlockSt
   } deriving (Typeable)
-
--- takes a specific player world on a state and an input and creates
--- from it the concrete observation. assumes, that a player
--- focused in Specific exists in Space BlockSt.
-{- todo: enable to make this work with two players moving simultanously -}
-inputToObs :: Specific (Space BlockSt, PlayerInput) ->
-  (Time{-of transition-},PWorld BlockTr,PWorld BlockSt)
-inputToObs spi@(Specific st sp sz (pobs,PAT eo ant0 pa antT ant1)) =
-  let (newTr,newSt) = undefined noActionSucc
-      {- todo: use noActionSucc and player input -}
-      -- do not forget to adapt time and player focus
-  in  (st,newTr,newSt)
-;-- only need to dumbly apply the player input.
--- contradictions are already taken care of in the caller-context.
--- we don't even need to check, that they have their eyes
--- closed during state anticipation, because that is caught by the
--- conditions-checker in caller ctx.
 
 -- given a focused map of block-states, it returns the successor
 -- transition and state assuming, that nothing happens
