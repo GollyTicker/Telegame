@@ -19,7 +19,7 @@ import qualified Data.Map as M
 import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MS
 import Data.Foldable
-import Data.Maybe (listToMaybe)
+--import Data.Maybe (listToMaybe)
 import Control.Monad (foldM)
 import Control.Arrow (first,second,(***))
 -- first: apply function on fst-element in tuple; f *** g = \(a,b) -> (f a,g b)

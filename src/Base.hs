@@ -1,54 +1,27 @@
-{-# LANGUAGE TypeFamilies, DeriveFunctor,DeriveDataTypeable,FlexibleContexts,TupleSections,NamedFieldPuns #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# OPTIONS_GHC -Wall #-}
 
 module Base(
      module Data.Proxy
-    ,Time,Pos
-    ,Player(..)
-    ,PWorld
-    ,Block(..)
-    ,BlockSt(..)
-    ,BC_Cons(..)
-    ,BCT_Cons(..)
-    ,BlockTr(..)
-    ,fst3,snd3,thd3
-    ,Timed
-    ,Space
-    ,Specific(..)
-    ,sameFocus
-    ,noAction
+    ,Time,Pos,TimePos
     ,Dir(..)
-    ,PhyObjT(..)
     ,rundir
     ,invDir
     ,applyDir
-    ,PhyObj(..)
-    ,Env(..)
     ,EAOnce(..)
     ,EARep(..)
+    ,PhyObj(..)
+    ,PhyObjT(..)
+    ,afterPhyObjT
+    ,Env(..)
     ,EnvT(..)
-    ,PlayerInput(..)
+    ,Player(..)
     ,PlayerAction(..)
     ,runpa
-    ,runpat
     ,toDirpa
     ,fromDirpa
     ,PlayerT(..)
-    ,runMayContra
-    ,failing
-    ,success
-    ,maybeToEither
-    ,TotalObservations
-    ,MayContra
-    ,GameState(..)
-    ,Field
-    ,TimePos
-    ,SpaceTime
-    ,TeleportInfo
-    ,CH_Global
-    ,ConsHistory(..)
-    ,CondRes
-    ,ConditionsChecker(..)
+    ,runpat
   )
   where
 
@@ -59,9 +32,6 @@ module Base(
 {-
 Main todo:
 . implement game state tansition function
-  . extend Player to have immediate past memory?
-  . actually. that is alread implemented using ClosedObs.
-  . it's the Specific a part, that captures the player-memory-ness.
 . clean up and tidy and refactor
 . INTEGRATE stack into Haste. unified and reproduceable build
 . use a good haskell IDE to make types support writing even more?
@@ -83,7 +53,7 @@ Main todo:
     one could also use a dragable circle which makes it clearer, which action
     one is inputting.
 
-count code size: cloc --exclude-ext=html,css src/
+count code size in /src : cloc --exclude-ext=html,js,sh,css .
 
 versions and packages:
 . Haskell Platform Core. 8.4.3
@@ -111,176 +81,15 @@ Licensing:
 
 import Data.Proxy
 import Data.Data
-import qualified Data.Set as S
 import Data.MultiSet (MultiSet)
-import qualified Data.MultiSet as MS
-import qualified Data.Map as M
-import qualified Data.Maybe as Maybe
 
 {- coordinate system, x y -}
 type Time = Int
 type Pos = (Int,Char)
-data Player = Player { pname :: String {- must be non-empty -}, peyes :: Bool, pinventory :: MultiSet PhyObj}
-  deriving (Eq,Ord)
-  {- name,(removed age for loops) , True means eyes are open, inventory -}
+type TimePos = (Time,Pos)
 
--- type Anticipation = Space (Maybe BlockSt)
--- an anticipation concerns only the positions with Just.
--- these positions have a new BlockSt specified as the desired state
--- type AnticipationT = Space (Maybe BlockTr)
-
-type PWorld a = OpenObs a
-class (Show (This a),Typeable a) => Block a where
-  type OpenObs a
-  type ClosedObs a
-  type Cons a
-  type Antcpt a
-  type Other a
-  data This a
-  this :: This a
-  getter :: This a -> Field -> Maybe a
-  on_standable :: a -> Bool
-  in_standable :: a -> Bool
-  permeable :: Show b => TimePos -> b -> a -> CondRes
-  selfconsistent :: a -> CondRes
-  interferesWithBlock :: TimePos -> a -> ConditionsChecker
-  {-@ reduceToClosed  :: Proxy a -> OpenObs a -> ClosedObs a @-}
-  reduceToClosed :: Proxy a -> OpenObs a -> ClosedObs a
-  applypwObs :: Proxy a -> PWorld a -> (OpenObs a -> b) -> (ClosedObs a -> b) -> b
-;
-
--- what the contents of a block can be.
--- during state and transition.
--- using multisets for objects, as they can occur multiple times
--- due to time-travel
-data BlockSt = BC { bcps :: MultiSet Player, bcos :: MultiSet PhyObj, bcenv :: Env }
-  deriving (Eq,Ord)
-;
-
-newtype BC_Cons = BCC BlockSt
-  deriving (Ord,Eq)
--- OneP Player | OneO PhyObj | Bgrd Env
--- => e.g. OneP p1 & OneP p1 & OneP p2 & Bgrd (Door 0 0) <=>
--- BSCons MultiSet(p1,p1,p2) + Door 0 0 ==> ".P1. .P1. .P2. D00"
-;
-
-data BCT_Cons =
-  BCTC {
-    bctcInit :: Maybe Env
-   ,bctcEnd  :: Maybe Env
-   ,bctcToFutrP :: MultiSet Player
-   ,bctcToFutrO :: MultiSet PhyObj
-   ,bctcFromPastP :: MultiSet Player
-   ,bctcFromPastO :: MultiSet PhyObj
-} deriving (Eq,Ord)
-
-data BlockTr = BCT {
-    bctenv  :: (Env,EnvT,Env) -- old env, environment change, new env (possibly same)
-   ,bctos   :: M.Map PhyObj (MultiSet PhyObjT) -- object motion. since objects can be multiple, each object is identified with a multiset of motions
-   ,bctps   :: MultiSet (Player,PlayerT,Player) -- player before -> action -> player after
-  }
-  deriving (Eq,Ord)
-;
-fst3 :: (a,b,c) -> a
-fst3 (a,_,_) = a
-snd3 :: (a,b,c) -> b
-snd3 (_,b,_) = b
-thd3 :: (a,b,c) -> c
-thd3 (_,_,c) = c
-
-{-
-IMPORTANT CONDITIONS:
-An unknown BlockSt has to be uniquely determinable from
-fully known neighboring BlockContentTs and distant blocks it interferes with (e.g. jump or teleport).
-same holds for BlockTr.
-=> using explicit constraints. BC_Cons and BCT_Cons
--}
-
--- Specific BlockSt and Specific ClosedObs
--- as well as Specific BlockSt (for open eyes view)
--- and Specific (Pos,BlockSt) (with a single map entry) (for closed eyes)
-
--- if the eyes are opened during the transition, then
--- the transition between intial and final state of the room
--- is recorded as observation.
--- if the eyes are opened/closed during the beginning/end of transition
--- then they are observed accordingly.
-
-{- observations for transition phases -}
--- Specific OpenObsT and Specific ClosedObsT
--- where ´time´ corresponds to beginning time of the transition
--- view of the room during time-transition
-
--- observation during opened eyes. the entire map
--- type OpenObsT = Specific (Space BlockTr)
-
-{- observation, if the eyes are closed during transition -}
--- for an explanation: see Telegame workbook
--- We thus only need to collect a list of observed blicks/fields.
--- type ClosedObsT = Specific (Space BlockTr) -- == OpenObsT
-
-type Timed a = M.Map Time a
-type Space a = M.Map Pos a
--- current observations of a specific player of a room-view
-data Specific a =
-  Specific { -- the observations from the perspective of a specific player
-     stime :: Time
-    ,splayer :: Player
-    ,ssize :: Pos
-    ,sobservations :: a
-  } -- beware. a player is not uniquely identified. multiple indistinguishable players might have the same view. but that's okay, because their observations will be identical as well.
- deriving (Eq, Ord, Functor)
-;
-
-sameFocus :: Specific a -> Specific b -> Bool
-sameFocus sp1 sp2 =
-  stime sp1 == stime sp2
-  && splayer sp1 == splayer sp2
-  && ssize sp1 == ssize sp2
-
--- motion from directon to direction. e.g. Motion R D means, that it came from right and fell down at our block
--- not all possible values are legitimate. e.g. Motiong L U and Motion L L are invalid.
 data Dir = L | U | R |D
   deriving (Eq,Ord,Data,Typeable)
-  
-data PhyObjT = NoMotionT | MotionT Dir Dir
-  | LandFrom Dir -- land from throws. Dir is L, R or U
-  | IntoInventory {- also counting Door or switch -}
-  | OntoGround {- also from switch or door -}
-  | TParrive Char | TPexit Char -- when objects lying on ground are sent though tp.
-  | TPsend | TPget -- teleorbs, when they are on ground, have TPsend for the
-  -- source and TPget for the destination orb. both get destroyed then.
-  deriving (Eq,Ord,Data,Typeable)
-;
-
-runPhyObjT :: a
-  -> (Dir -> Dir -> a)
-  -> (Dir -> a)
-  -> a -> a
-  -> (Char -> a) -> (Char -> a)
-  -> a -> a
-  -> PhyObjT -> a
-runPhyObjT nomot mot lf inv grd tparr tpext tpsnd tpget o = case o of
-  NoMotionT        -> nomot
-  MotionT din dout -> mot din dout
-  LandFrom di      -> lf di
-  IntoInventory    -> inv
-  OntoGround       -> grd
-  TParrive c       -> tparr c
-  TPexit   c       -> tpext c
-  TPsend           -> tpsnd
-  TPget            -> tpget
-;
-
-rundir :: a -> a -> a -> a -> Dir -> a
-rundir l u r d dir = case dir of L -> l; U -> u; R -> r; D -> d
-
-invDir :: Dir -> Dir
-invDir = rundir R D L U
-
-applyDir :: Dir -> TimePos -> TimePos
-applyDir d (t,(x,y)) = case rundir (pred,id) (id,pred) (succ,id) (id,succ) d
-  of (f,g) -> (,) t (f x,g y)
 
 data PhyObj = TOrb Char Int {- identifier, int is 0 or 1 -}
             | Key
@@ -300,6 +109,22 @@ data Env = Door { dneeds :: Int, dhas :: Int } {- # keys needed, # keys inside. 
   deriving (Eq, Ord,Data,Typeable)
 ;
 
+data Player = Player { pname :: String {- must be non-empty -}, peyes :: Bool, pinventory :: MultiSet PhyObj}
+  deriving (Eq,Ord)
+  {- name,(removed age for loops) , True means eyes are open, inventory -}
+
+data PhyObjT = NoMotionT | MotionT Dir Dir
+  | LandFrom Dir -- land from throws. Dir is L, R or U
+  | IntoInventory {- also counting Door or switch -}
+  | OntoGround {- also from switch or door -}
+  | TParrive Char | TPexit Char -- when objects lying on ground are sent though tp.
+  | TPsend | TPget -- teleorbs, when they are on ground, have TPsend for the
+  -- source and TPget for the destination orb. both get destroyed then.
+  deriving (Eq,Ord,Data,Typeable)
+
+data EnvT = EnvStays | EnvUsedOnce EAOnce | EnvUsedMult [EARep]
+  deriving (Eq,Ord,Data,Typeable)
+;
 
 data EAOnce = PressAndHold -- | more options later...
   deriving (Eq,Ord,Data,Typeable)
@@ -309,47 +134,6 @@ data EARep = TraverseDoor
   | ToogleSwitch
   deriving (Eq,Ord,Data,Typeable)
 ;
-data EnvT = EnvStays | EnvUsedOnce EAOnce | EnvUsedMult [EARep]
-  deriving (Eq,Ord,Data,Typeable)
-
-{- PRE-CONDITIONS:
-. when state anticipation is used, then the eyes must be closed during that time
-. the player can anticipate both before and after their action
-. a transition can also be anticipated (doesn't require closed eyes)
--}
-data PlayerInput =
-  PAT { eyesOpenedT :: Bool
-        ,antcpt0 :: Antcpt BlockSt
-        ,paction :: PlayerAction
-        ,antcptT :: Antcpt BlockTr
-        ,antcpt1 :: Antcpt BlockSt
-  } deriving (Typeable)
-
--- given a focused map of block-states, it returns the successor
--- transition and state assuming, that nothing happens
-noActionSucc :: BlockSt -> (BlockTr,BlockSt)
-noActionSucc x = let xtr = f x in (xtr, g xtr)
-  where f (BC ps os env) = BCT {
-       bctenv = (env,EnvStays,env)
-      ,bctos = M.fromListWith MS.union $ map (,MS.singleton NoMotionT) $ MS.toList os
-      ,bctps = MS.map (\p -> (p,Completed NoAction,p)) ps
-    }
-        g BCT{bctenv,bctos,bctps} = BC{
-       bcenv = thd3 bctenv
-      ,bcps  = MS.map thd3 bctps
-      ,bcos  = MS.unions . M.elems
-        . M.mapWithKey (\o -> catMaybes . MS.map (afterPhyObjT o)) $ bctos
-    }
-;
-afterPhyObjT :: PhyObj -> PhyObjT -> Maybe PhyObj
-afterPhyObjT o = let jo = Just o; n = Nothing
-  in  runPhyObjT jo (\_ _->n) (\_->jo) n jo (\_->jo) (\_->n) n n
-
-catMaybes ::Ord a => MultiSet (Maybe a) -> MultiSet a
-catMaybes = MS.fromList . Maybe.catMaybes . MS.toList
-
-noAction :: (Functor f, Functor g) => f (g BlockSt) -> f (g BlockTr)
-noAction = fmap (fmap (fst . noActionSucc))
 
 data PlayerAction =
   MoveL | MoveR
@@ -371,6 +155,24 @@ data PlayerAction =
   }
   deriving (Eq,Ord)
 ;
+
+-- in addition to player actions,
+-- during transition one can observe a few more things
+-- in additions to the normals commands. they are complemented here
+data PlayerT =
+  Initiated PlayerAction
+  -- | Intermediate PlayerAction -- e.g. MoveR for finish moving to right (before falling down now). obsolete due to Motion
+  | Motion Dir Dir -- motion: incoming from and outgoing to
+  {- possible values. L D , D R, D D, U D and their left-right symmetrical variants -}
+  | Completed PlayerAction -- e.g. MoveR for arriving at the right block (an no subsq. falling)
+      -- landing from a jump without falling is also counted here.
+      -- if a non-moving action is executed (e.g. toogle switch),then always Completed is used.
+  | CompletedFalling -- completed falling is used, if the player finished their turn
+  deriving (Eq,Ord)  -- on a different block than what ne would expect from the player action
+;
+
+
+{- util functions for base data-types -}
 
 runpa :: a -> a ->
          a -> a -> a ->
@@ -411,20 +213,6 @@ fromDirpa = runpa (j R) (j L) (j D) (j R) (j L)
   where
     n = Nothing; j = Just
 ;
--- in addition to player actions,
--- during transition one can observe a few more things
--- in additions to the normals commands. they are complemented here
-data PlayerT =
-  Initiated PlayerAction
-  -- | Intermediate PlayerAction -- e.g. MoveR for finish moving to right (before falling down now). obsolete due to Motion
-  | Motion Dir Dir -- motion: incoming from and outgoing to
-  {- possible values. L D , D R, D D, U D and their left-right symmetrical variants -}
-  | Completed PlayerAction -- e.g. MoveR for arriving at the right block (an no subsq. falling)
-      -- landing from a jump without falling is also counted here.
-      -- if a non-moving action is executed (e.g. toogle switch),then always Completed is used.
-  | CompletedFalling -- completed falling is used, if the player finished their turn
-  deriving (Eq,Ord)  -- on a different block than what ne would expect from the player action
-;
 
 runpat :: (PlayerAction -> a) -> 
         --(PlayerAction -> a) ->
@@ -441,153 +229,38 @@ runpat _init mot compl complf pat =
     Completed x -> compl x
     CompletedFalling -> complf
 ;
-          
 
--- what the screen shall show for a specific player.
--- during closed eyes this corresponds to predictions.
--- during opened eyes this corresponds to the ordinary open observations.
--- ActualScreenView = Specfic RoomView OR Specific OpenObs
--- data RoomView = entire room view isomorphic to OpenObs which is simply interpreted
--- as the prediction for the entire room.
--- the interactions with the current block become the observations.
---newtype ScreenView = Specific OpenObs
+rundir :: a -> a -> a -> a -> Dir -> a
+rundir l u r d dir = case dir of L -> l; U -> u; R -> r; D -> d
 
--- OpenObs   = observations of the whole room from a specific players view
--- ClosedObs = observations of the current pos from a specific players view
+invDir :: Dir -> Dir
+invDir = rundir R D L U
 
--- OpenObsT = observations of the whole room from a specific players view during transition
--- ClosedObsT = observations of the blocks a specific player visits and from their view during transition
+applyDir :: Dir -> TimePos -> TimePos
+applyDir d (t,(x,y)) = case rundir (pred,id) (id,pred) (succ,id) (id,succ) d
+  of (f,g) -> (,) t (f x,g y)
 
--- a PlayerWorld has the information of how a room looks to a player.
--- type PlayerWorld = OpenObs
--- type PlayerWorldT = OpenObsT
-
--- PlayerWorld  ~= Time x PlayerID x Space BlockSt
--- PlayerWorldT ~= Time x PlayerID x Space BlockTr
-
-type MayContra a = Either [CondRes] a
-
-runMayContra :: ([CondRes] -> a) -> (b -> a) -> MayContra b -> a
-runMayContra = either
-
-failing :: String -> MayContra a
-failing = Left . (:[])
-
-success :: a -> MayContra a
-success = Right
-
-maybeToEither :: e -> Maybe a -> Either e a
-maybeToEither e = maybe (Left e) Right 
-
--- a gamestate contains all the memories and acitons of all the players as well as the environmental changes
--- it starts with the intial state of the players and adds an evolution
--- of transitions and successive states of the world and the players.
-type TotalObservations = Timed (MultiSet (PWorld BlockSt),MultiSet (PWorld BlockTr))
-data GameState = GS {
-     gsobs :: TotalObservations
-       -- an intial player state for each player AND
-      -- the history of the observations. each element in the sequence contains the 
-      -- current player states as well as the transition observations following that state.
-
-    ,gsch :: ConsHistory
-    -- a represented set of histories which are consistent with the current observations
-  }
+runPhyObjT :: a
+  -> (Dir -> Dir -> a)
+  -> (Dir -> a)
+  -> a -> a
+  -> (Char -> a) -> (Char -> a)
+  -> a -> a
+  -> PhyObjT -> a
+runPhyObjT nomot mot lf inv grd tparr tpext tpsnd tpget o = case o of
+  NoMotionT        -> nomot
+  MotionT din dout -> mot din dout
+  LandFrom di      -> lf di
+  IntoInventory    -> inv
+  OntoGround       -> grd
+  TParrive c       -> tparr c
+  TPexit   c       -> tpext c
+  TPsend           -> tpsnd
+  TPget            -> tpget
 ;
-type Field = (Maybe BlockSt, Maybe BlockTr)
-type TimePos = (Time,Pos)
-type SpaceTime a = Timed (Space a)
-type TeleportInfo = PlayerAction {- only Teleport case allowed -}
-{- tpos before starting tp, teleorb-pair identifier, transfered objects, tpos after arrival -}
-type CH_Global = M.Map Char TeleportInfo -- no in map is eqivalient to unknown.
-data ConsHistory =
-  CH {
-    chspace  :: SpaceTime Field
-   ,chsize   :: TimePos
-   ,chglobal :: CH_Global 
-  }
-;
--- maxTime: maximum time for which the history is considered. on time progression
--- or future-time teleportation, this will be extended and filled with defaults.
--- The contraint matrix is indexed by
---   [t= 0..maxTime] X {State, Transition} X [p = (0,0)..chsize]
--- with the domain
---   (t,State,pos)       :: Maybe BlockSt  = Maybe (Set Player x Set PhyObj x Env)
---   (t,Transition,pos)  :: Maybe BlockTr for the transition starting at t
--- If the Maybe is Just, then the contents are uniquely determined.
--- If the Maybe is Nothing, then it is Unkown.
--- Inconsistent histories cannot be created in the first place.
 
+afterPhyObjT :: PhyObj -> PhyObjT -> Maybe PhyObj
+afterPhyObjT o = let jo = Just o; n = Nothing
+  in  runPhyObjT jo (\_ _->n) (\_->jo) n jo (\_->jo) (\_->n) n n
 
-type CondRes = String -- "" means satisfied. otherwise contradiction with description.
--- TODO:
-{-
-
-Distinction:
-1. PlayerActions. each player action, applied on a CondHistory
-   can only spawn observations in the (St,Tr,St) surrounding
-   that action.
-
-2. PlayerObservations (like [? S]). they only
-   limit what actually already happend. steps in immediate future
-   are not observed yet. only current step (St or Tr) is observed.
-   cannot create contradictions. just observations.
-   contradicting observations (even in the same player) are only
-   discovered later.
-   IMP. REALIZATION:
-   conditions on interacted with elements from current time are enforced.
-   e.g. reduced from blurred prediction to actual observation.
-   as mentioned above, if they are in a different field, then it's only a
-   partial observation.
-   TODO: perhaps change this? maybe let them only observe the things they
-   actually interact with. thus, they are also closed to their current field.
-   makes understanding this more intuitive.
-   However, this may only enforce some level of 'careful walking' for
-   interactions form future.
-   The implementation will make use of Interference.hs to get the
-   set of conditions, which need to be observed in the current time.
-   
-      Partial observations might be displayed as:
-      ?,  P,?
-      ?,? S,?
-      denoting, that the player knows, that there is a S block below him
-      but doesn't know it's other contents.
-   
-   Thus we need to change the semantics of playerObservations
-   to encode full and partial observations. actually, partial
-   observations suffice where a full observation is just a large set
-   of partial observations + a flag to denote, that everything was observed.
-   
-3. for each object -> get countable and constructable constraints
-   on self-block and other blocks and global information.
-   these don't force an unknown to become known.
-
-4. for each checkable (block + global info) collect all of the constraints
-   from previous step and make ConsHistory a bit more concrete.
-   contradictions are discovered here.
-      integrate with Cons BlockSt and Cons BlockTr.
-      make them so strong/expressive, that they can over all of what we need here.
-      perhaps, use both Cons to implement a new ConsHistory.
-      one which is made of minimal elements only. it only grows,
-      when condition-requirements from other places are checked.
-      new featureswill only be added, once they are needed.s
-      Choice (e.g. on standable vs in standable) will try to first
-      make any1 of them concrete and see, whether one can stay on them.
-      otherwise, the choice is deferred at a worse case of exp. time.
-      practically speaking, ground-check cannot become the feared exp-blowup,
-      because even in closed eyes, the current block is visible
-      and therefore, the requirement is always given or deferred to the lower block.
-
-5. End of Level: start from t=0 and on each step
-   concretize the CondHistory to a unique ConsHistory.
--}
-data ConditionsChecker =
-  CC {
-    ccneeds :: S.Set TimePos
-   ,ccrun :: M.Map TimePos Field -> CH_Global -> [CondRes]
-                      -- PRECONDITION: ccrun is called on a map,
-                      -- which is defined for all keys in ccneeds!
- -- perhaps add output method to generate contradiction results?
- -- returns a CondRes for every check.
-  }
-;
 

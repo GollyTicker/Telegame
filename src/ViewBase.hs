@@ -10,7 +10,7 @@ module ViewBase(
   )
   where
 
-import Base
+import BaseBlock
 import Data.List (intercalate)
 import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MS

@@ -4,9 +4,9 @@
 module Maps
   where
 
-import Base
-import View
+import BaseBlock
 import GameState
+import View (fromString)
 import qualified Data.Map as M
 import qualified Data.MultiSet as MS
 

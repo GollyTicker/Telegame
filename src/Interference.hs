@@ -8,7 +8,7 @@
 #endif
 
 module Interference(
-     module Base
+     module BaseBlock
     ,interferesWith
     ,interferesWithT
     ,inferMinimal
@@ -18,7 +18,7 @@ module Interference(
   )
   where
 
-import Base
+import BaseBlock
 import Data.Data
 import Control.Monad (foldM)
 import ViewBase()
