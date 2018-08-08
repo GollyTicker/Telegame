@@ -1,6 +1,7 @@
-
+{-# LANGUAGE TupleSections,NamedFieldPuns #-}
 {-# OPTIONS -Wall -fno-warn-missing-signatures -fno-warn-unused-imports #-}
 
+import Haste
 import Haste.DOM
 import Haste.Events
 import Haste.Graphics.Canvas
@@ -72,9 +73,9 @@ main = do
     holder <- newSVGElem "g" `under` svg
     
     let size = 75
-        blockInf = Info{parent=holder,sc=(size,size),pd=(0,0),brd=Just 1,tr=undefined}
+        blockInf = dflt{parent=holder,sc=(size,size),pd=(0,0),brd=Just 1,t=0,tr=undefined}
         f i j = (i*(size+5)+15,j*(size+5)+15)
-    
+    {-
     _ <- Key            `drawWith` blockInf{tr=f 0 0}
     _ <- TOrb 'a' 0     `drawWith` blockInf{tr=f 0 1}
     _ <- TOrb 'a' 1     `drawWith` blockInf{tr=f 0 2}
@@ -109,12 +110,22 @@ main = do
           `drawWith` blockInf{tr= f 3 2}
     
     _ <- sobservations map2_P0_t0
-          `drawWith` blockInf{tr=(f 4 0),sc=(800,800)}
+          `drawWith` blockInf{tr=(f 0 0),sc=(800,800)}
               {- sc = bounds on the size of the drawn spacetime -}
+    -}
+    _ <- gsch map2_GS
+          `drawWith` blockInf{tr=(f 2 0),sc=(800,800)}
+      {- keycodes: ArrowLeft  37
+                   ArrowUp    38
+                   ArrowRight 39
+                   ArrowDown  40
+       -}
     
     _ <- onEvent documentBody KeyDown $
-      ( \_ -> {- todo: scroll by A/D or left/right arrow through spacetime. -}
-              return () )
+      {- todo: scroll by A/D or left/right arrow through spacetime. -}
+      ( \kd -> tellW kd $ case kd of
+        37 -> tellW "hello" $ return ()-- translate the holder
+        _  -> return () )
     
     return ()
     -- runCanvasExample
