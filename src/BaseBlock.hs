@@ -1,4 +1,4 @@
-{-# LANGUAGE TupleSections,NamedFieldPuns,FlexibleContexts,TypeFamilies,DeriveFunctor #-}
+{-# LANGUAGE TupleSections,ExistentialQuantification,NamedFieldPuns,FlexibleContexts,TypeFamilies,DeriveFunctor #-}
 {-# OPTIONS_GHC -Wall #-}
 
 module BaseBlock (
@@ -7,8 +7,6 @@ module BaseBlock (
     ,BlockSt(..)
     ,BlockTr(..)
     ,fst3,snd3,thd3
-    ,BC_Cons(..)
-    ,BCT_Cons(..)
     ,PWorld
     ,Timed
     ,Space
@@ -26,8 +24,10 @@ module BaseBlock (
     ,TeleportInfo
     ,CH_Global
     ,ConsHistory(..)
-    ,CondRes
-    ,ConditionsChecker(..)
+    ,ConsFail
+    ,ConsRes
+    ,ConsResB(..)
+    ,Constraint(..)
     ,PlayerInput(..)
   ) where
 
@@ -45,7 +45,16 @@ type PWorld a = OpenObs a
 class (Show (This a),Typeable a) => Block a where
   type OpenObs a
   type ClosedObs a
-  type Cons a
+  data Cons a
+  {- explicit minimality constraint representation of BlockSt/BlockTr -}
+  {-
+  IMPORTANT CONDITIONS:
+  An unknown BlockSt has to be uniquely determinable from
+  fully known neighboring BlockContentTs and distant blocks it interferes with (e.g. jump or teleport).
+  (unless contradiction of course).
+  same holds for BlockTr.
+  => using explicit constraints. BC_Cons and BCT_Cons
+  -}
   type Antcpt a
   type Other a
   data This a
@@ -53,9 +62,9 @@ class (Show (This a),Typeable a) => Block a where
   getter :: This a -> Field -> Maybe a
   on_standable :: a -> Bool
   in_standable :: a -> Bool
-  permeable :: Show b => TimePos -> b -> a -> CondRes
-  selfconsistent :: a -> CondRes
-  interferesWithBlock :: TimePos -> a -> ConditionsChecker
+  permeable :: Show b => TimePos -> b -> a -> ConsRes a
+  selfconsistent :: a -> ConsRes a
+  interferesWithBlock :: TimePos -> a -> Constraint a
   reduceToClosed :: Proxy a -> OpenObs a -> ClosedObs a
   applypwObs :: Proxy a -> PWorld a -> (OpenObs a -> b) -> (ClosedObs a -> b) -> b
 ;
@@ -77,31 +86,6 @@ snd3 :: (a,b,c) -> b
 snd3 (_,b,_) = b
 thd3 :: (a,b,c) -> c
 thd3 (_,_,c) = c
-
-{- explicit minimality constraint representation of BlockSt/BlockTr -}
-newtype BC_Cons = BCC BlockSt
-  deriving (Ord,Eq)
--- OneP Player | OneO PhyObj | Bgrd Env
--- => e.g. OneP p1 & OneP p1 & OneP p2 & Bgrd (Door 0 0) <=>
--- BSCons MultiSet(p1,p1,p2) + Door 0 0 ==> ".P1. .P1. .P2. D00"
-;
-data BCT_Cons =
-  BCTC {
-    bctcInit :: Maybe Env
-   ,bctcEnd  :: Maybe Env
-   ,bctcToFutrP :: MultiSet Player
-   ,bctcToFutrO :: MultiSet PhyObj
-   ,bctcFromPastP :: MultiSet Player
-   ,bctcFromPastO :: MultiSet PhyObj
-} deriving (Eq,Ord)
-{-
-IMPORTANT CONDITIONS:
-An unknown BlockSt has to be uniquely determinable from
-fully known neighboring BlockContentTs and distant blocks it interferes with (e.g. jump or teleport).
-(unless contradiction of course).
-same holds for BlockTr.
-=> using explicit constraints. BC_Cons and BCT_Cons
--}
 
 -- Specific BlockSt and Specific ClosedObs
 -- as well as Specific BlockSt (for open eyes view)
@@ -139,9 +123,9 @@ sameFocus sp1 sp2 =
 
 
 {- MAY CONTRADICT: type for a possibly contradiction-raising vale -}
-type MayContra a = Either [CondRes] a
+type MayContra a = Either [ConsFail] a
 
-runMayContra :: ([CondRes] -> a) -> (b -> a) -> MayContra b -> a
+runMayContra :: ([ConsFail] -> a) -> (b -> a) -> MayContra b -> a
 runMayContra = either
 
 failing :: String -> MayContra a
@@ -196,8 +180,7 @@ data ConsHistory =
 -- Inconsistent histories cannot be created in the first place.
 
 
-{- ===== CONDITIONS CHECKING & EXAMPLE GENERATION ===== -}
-type CondRes = String -- "" means satisfied. otherwise contradiction with description.
+{- =============== CONSTRAINT ============= -}
 -- TODO:
 {-
 
@@ -259,17 +242,21 @@ Distinction:
 5. End of Level: start from t=0 and on each step
    concretize the CondHistory to a unique ConsHistory.
 -}
-data ConditionsChecker =
-  CC {
-    ccneeds :: S.Set TimePos
-   ,ccrun :: M.Map TimePos Field -> CH_Global -> [CondRes]
-                      -- PRECONDITION: ccrun is called on a map,
-                      -- which is defined for all keys in ccneeds!
- -- perhaps add output method to generate contradiction results?
- -- returns a CondRes for every check.
+
+{- result of a constaint check. either a string describing
+the contradiction - or a successful constraint/value.
+-}
+type ConsFail = String
+type ConsRes b = Either ConsFail (Cons b)
+data ConsResB = forall b. Block b => CR { unCR :: ConsRes b}
+{- a constraint. expects the current cons-history spacetime as well
+   as its global information. returns a contradiction -}
+data Constraint b =
+  C {
+     cneeds  :: S.Set TimePos
+    ,runCons :: M.Map TimePos Field -> CH_Global -> ConsRes b
   }
 ;
-
 
 {- ================= PLAYER-INPUT ===============
 precondition:

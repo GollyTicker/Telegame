@@ -8,6 +8,8 @@ module View (
 
 import Interference
 import ViewBase
+import Data.Typeable (cast)
+import Data.Maybe (fromJust)
 import Data.List (intercalate,transpose)
 import qualified Data.Map as M
 import Data.MultiSet (MultiSet)
@@ -41,11 +43,18 @@ instance Show BlockSt where
 ;
 
 -- TODO: explicit instances.
-deriving instance Show BC_Cons
-deriving instance Show BCT_Cons
+deriving instance Show (Cons BlockSt)
+deriving instance Show (Cons BlockTr)
 deriving instance Show EnvT
 deriving instance Show PlayerInput
 
+instance Show ConsResB where
+  show (CR (consres::ConsRes b)) =
+    let str = if (this :: This b) `is_a` St
+          then show (fromJust $ cast consres :: ConsRes BlockSt)
+          else show (fromJust $ cast consres :: ConsRes BlockTr)
+    in  concat ["CR (",str,")"]
+  
 instance Show BlockTr where
   show (BCT (env1,envt,env2) ots pts) =
     let firstHalf = enclosing "[" "]" $ toStringMultiSet3 pts ++ toStringMultiMap ots 

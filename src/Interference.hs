@@ -15,6 +15,12 @@ module Interference(
     ,inferMinimalT
     ,adjustGlobalInfo
     ,isContradiction
+    
+    ,This(..)
+    ,is_a
+    ,ok
+    ,notok
+    ,Cons(..)
   )
   where
 
@@ -24,7 +30,7 @@ import Control.Monad (foldM)
 import ViewBase()
 import qualified Data.Set as S
 import qualified Data.Map as M
--- import Data.MultiSet (MultiSet)
+import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MS
 import Data.Monoid
 -- import Debug.Trace
@@ -33,7 +39,10 @@ import Data.Monoid
 instance Block BlockSt where
   type OpenObs BlockSt = Specific (Space BlockSt)
   type ClosedObs BlockSt = Specific (Pos,BlockSt)
-  type Cons BlockSt = BC_Cons
+  newtype Cons BlockSt = BCC BlockSt deriving (Ord,Eq)
+    -- OneP Player | OneO PhyObj | Bgrd Env
+    -- => e.g. OneP p1 & OneP p1 & OneP p2 & Bgrd (Door 0 0) <=>
+    -- BSCons MultiSet(p1,p1,p2) + Door 0 0 ==> ".P1. .P1. .P2. D00"
   type Antcpt BlockSt = Space (Maybe BlockSt)
   type Other BlockSt = BlockTr
   data This BlockSt = St
@@ -42,7 +51,7 @@ instance Block BlockSt where
   on_standable bc = envStandable (bcenv bc)
   in_standable bc = envStandableIn (bcenv bc)
   permeable curr reason bc = fromBool (show (curr,St) ++ " requires permeable for " ++ show reason) $ envPermeable (bcenv bc)
-  selfconsistent _ = ok -- TODO: implement. required counting ability => BC_Cons and BCT_Cons
+  selfconsistent _ = todo -- TODO: implement. required counting ability => BC_Cons and BCT_Cons
   interferesWithBlock = interferesWith
   
   -- find the block where the player is and reduce all to that block.
@@ -55,7 +64,15 @@ instance Block BlockSt where
 instance Block BlockTr where
   type OpenObs BlockTr = Specific (Space BlockTr)
   type ClosedObs BlockTr = Specific (Space BlockTr)
-  type Cons BlockTr = BCT_Cons
+  data Cons BlockTr =
+      BCTC {
+        bctcInit :: Maybe Env
+       ,bctcEnd  :: Maybe Env
+       ,bctcToFutrP :: MultiSet Player
+       ,bctcToFutrO :: MultiSet PhyObj
+       ,bctcFromPastP :: MultiSet Player
+       ,bctcFromPastO :: MultiSet PhyObj
+    } deriving (Eq,Ord)
   type Antcpt BlockTr = Space (Maybe BlockTr)
   type Other BlockTr = BlockSt
   data This BlockTr = Tr
@@ -68,7 +85,7 @@ instance Block BlockTr where
   permeable curr reason bct = let (old,change,new) = bctenv bct
                   in fromBool (show (curr,Tr) ++ "requires remaining permeable for" ++ show reason) $
                       envPermeable old && envPermeable new && envTPermeable change
-  selfconsistent _ = ok -- TODO: implement
+  selfconsistent _ = todo -- TODO: implement
   interferesWithBlock = interferesWithT
   
   -- get all block where the player is identified
@@ -116,29 +133,26 @@ envStandable _ = False
 envTStandable :: EnvT -> Bool
 envTStandable _ = True
 
--- Given a field and predicate for that field, it checks,
--- whether the predicate is satisfied by that field.
---mkSimpleCCwithGlobal :: TimePos -> (Field -> CondRes) -> ConditionsChecker
---mkSimpleCCwithGlobal tpos f = CC {ccneeds = S.singleton tpos, ccrun = (:[]) . f . maybe (error "mkSimpleCC[fatal]: CC precondition violated") id . M.lookup tpos}
 
-mkGlobalCC :: (CH_Global -> CondRes) -> ConditionsChecker
-mkGlobalCC f = CC { ccneeds = S.empty, ccrun = \_ g -> [f g] }
+mkGlobalCC :: Block b => (CH_Global -> ConsRes b) -> Constraint b
+mkGlobalCC f = C { runCons = \_ g -> f g, cneeds = S.empty }
 
-mkSimpleCCwithGlobal :: TimePos -> (Field -> CH_Global -> CondRes) -> ConditionsChecker
-mkSimpleCCwithGlobal tpos f = CC {
-  ccneeds = S.singleton tpos,
-  ccrun = \mp g -> (:[]) . flip f g . maybe (error "mkSimpleCC[fatal]: CC precondition violated") id . M.lookup tpos $ mp}
+mkSimpleCCwithGlobal :: Block b =>
+  TimePos -> (Field -> CH_Global -> ConsRes b) -> Constraint b
+mkSimpleCCwithGlobal tpos f = C {
+  runCons = \mp g -> flip f g . maybe (error "mkSimpleCC[fatal]: CC precondition violated") id . M.lookup tpos $ mp
+ ,cneeds = S.singleton tpos }
   
-mkSimpleCC :: TimePos -> (Field -> CondRes) -> ConditionsChecker
-mkSimpleCC tpos f = CC {
-  ccneeds = S.singleton tpos,
-  ccrun = \mp _g -> (:[]) . f . maybe (error "mkSimpleCC[fatal]: CC precondition violated") id . M.lookup tpos $ mp}
-
+mkSimpleCC :: Block b =>  TimePos -> (Field -> ConsRes b) -> Constraint b
+mkSimpleCC tpos f = C {
+   runCons = \mp _g -> f . maybe (error "mkSimpleCC[fatal]: CC precondition violated") id . M.lookup tpos $ mp
+  ,cneeds = S.singleton tpos
+}
 {- y-axis is pointed downwards -}
 -- is1 ensures, that current position is on ground.
 -- either through looking at below, or through a platform at same position
-isGrounded :: (Show a,Block b) => This b -> TimePos -> a -> ConditionsChecker
-isGrounded ths curr@(t,(x,y)) reason =
+isGrounded :: (Show a,Block b) => This b -> TimePos -> a -> Constraint b
+isGrounded ths curr@(t,(x,y)) reason = todo {-
   let below = (t,(x,succ y))
   in  CC { ccneeds = S.fromList [curr,below],
            ccrun   = \mp _g ->
@@ -146,67 +160,85 @@ isGrounded ths curr@(t,(x,y)) reason =
              . (unknownOkAnd (\foundStd -> if not (getAny foundStd) then show (curr,ths) ++ " needs standable (cause: "++show reason++") on "++show below ++" or standable in "++ show curr else ok))
              $ (fmap (Any . in_standable) . getter ths $ mp M.! curr) `mappend` (fmap (Any . on_standable) . getter ths $ mp M.! below)
       }
-;
+;-}
 
-isPermeable :: (Block b,Show a) => This b -> TimePos -> a -> ConditionsChecker
-isPermeable ths curr reason = mkSimpleCC curr $ unknownOkAnd (permeable curr reason) . getter ths
+isPermeable :: (Block b,Show a) => This b -> TimePos -> a -> Constraint b
+isPermeable ths curr reason = todo --mkSimpleCC curr $ unknownOkAnd (permeable curr reason) . getter ths
 
 -- a condition checker specified a set of TimePos
 -- it wants to access. it also specifies a function which gets
 -- a partial view of the spacetime to conclude whether the condition is satisfied or not
--- ConditionsChecker is a Monoid.
+-- Constraint b is a Monoid.
 -- CondRes only has a 0-Element, but no binary operation for it.
 {- DIFINITION in Base -}
 #if __GLASGOW_HASKELL__ >= 840
-instance Semigroup ConditionsChecker where -- required by Monoid, since GHC 8.
+instance Semigroup (Constraint b) where -- required by Monoid, since GHC 8.
   (<>) = also
 ;
 #else
 #endif
-instance Monoid ConditionsChecker where
+instance Block b => Monoid (Constraint b) where
   mempty = alwaysOk
   mappend = also
 ;
 
-ok :: CondRes
-ok = ""
+{- connectives and neutral-elem for building constraint from others. -}
+{-cand :: Block b => Cons b -> Cons b -> Cons b
+cand = todo
+cor  :: Block b => Cons b -> Cons b -> Cons b
+cor  = todo
+cleast :: Block b => Cons b
+cleast = todo
+-}
 
-fromBool :: String -> Bool -> CondRes
-fromBool s b = if b then ok else s
+ok :: Block b => Cons b -> ConsRes b
+ok = Right
 
-isContradiction :: CondRes -> Bool
+notok :: ConsFail -> ConsRes b
+notok = Left
+
+orElse :: Block b => Constraint b -> Constraint b -> Constraint b
+orElse = todo
+
+satisfies :: Block b => b -> Cons b -> Maybe ConsFail
+satisfies = todo
+
+fromBool :: Block b => String -> Bool -> ConsRes b
+fromBool s b = if b then ok todo else Left s
+
+isContradiction :: Block b => ConsRes b -> Bool
 isContradiction = not . null
 
-unknownOkAnd :: (a -> CondRes) -> Maybe a -> CondRes
-unknownOkAnd = maybe ok
+unknownOkAnd :: Block b => (a -> ConsRes b) -> Maybe a -> ConsRes b
+unknownOkAnd = maybe (ok todo)
 
-alwaysOk :: ConditionsChecker
-alwaysOk = CC { ccneeds = S.empty, ccrun = \_ _ -> []}
+alwaysOk :: Block b => Constraint b
+alwaysOk = todo -- C { ccrun = \_ _ -> [], cneeds = S.empty}
 
-also :: ConditionsChecker -> ConditionsChecker -> ConditionsChecker
-(CC nds runcc) `also` (CC nds' runcc') =
+also :: Block b => Constraint b -> Constraint b -> Constraint b
+(C run nds) `also` (C run' nds') = todo {-
     CC { ccneeds = S.union nds nds',
-         ccrun = \mp g-> runcc mp g ++ runcc' mp g}
+         ccrun = \mp g-> runcc mp g ++ runcc' mp g} -}
 
 -- all interferesWith functions check at the current BlockSt.
 -- all interferesWithT functions check at the current BlockTr.
 
-interferesWith :: TimePos -> BlockSt -> ConditionsChecker
+interferesWith :: TimePos -> BlockSt -> Constraint BlockSt
 interferesWith curr bc =
   ( playerInterferesWith curr `foldMap` MS.toList (bcps bc))
   `also` ( phyObjInterferesWith curr `foldMap` MS.toList (bcos bc))
   `also` ( envInterferesWith curr (bcenv bc))
 ;
 
-interferesWithT :: TimePos -> BlockTr -> ConditionsChecker
+interferesWithT :: TimePos -> BlockTr -> Constraint BlockTr
 interferesWithT curr bct =
   ( playerInterferesWithT curr `foldMap` MS.toList (bctps bct) )
   `also` ( (\(o,ot) -> phyObjInterferesWithT curr o `foldMap` ot) `foldMap` M.toList (bctos bct))
   `also` ( envInterferesWithT curr (bctenv bct))
 ;
 
-playerInterferesWithT :: TimePos -> (Player,PlayerT,Player) -> ConditionsChecker
-playerInterferesWithT curr p =
+playerInterferesWithT :: TimePos -> (Player,PlayerT,Player) -> Constraint BlockTr
+playerInterferesWithT curr p = todo {-
   let needsGroundCheck = runpat (const True) (\_ _ -> False) (const True) True (snd3 p)
       {- case (Completed pa): currently, all completed actions require a grounded place as dest. -}
       {- physical movement: movingNext = Nothing, if player doesn't move out of current block.
@@ -218,7 +250,7 @@ playerInterferesWithT curr p =
       leavesPuzzle = case snd3 p of
         (Completed (UseEnvMult es)) -> case es of [] -> False; _non_empty -> last es == TraverseDoor
         _ -> False
-      -- globalMismatch :: PlayerAction -> PlayerAction -> CondRes
+      -- globalMismatch :: PlayerAction -> PlayerAction -> ConsRes ?
       -- globalMismatch tpl tpg = show (curr,Tr) ++ " contains " ++ show tpl ++ " which should be consistent to global information " ++ show tpg
   in (if needsGroundCheck then isGrounded Tr curr p else alwaysOk)
      `also` isPermeable Tr curr p
@@ -240,8 +272,7 @@ playerInterferesWithT curr p =
           ) `also` case movingFrom of
               Nothing -> hasPastIf Tr St curr (fst3 p) (any ((fst3 p)==) . bcps);
               Just d  -> mkSimpleCC (applyDir d curr) $ unknownOkAnd (fromBool (fromReqStr d) . any (`canBePredOf` p) . bctps) . getter Tr
-      )
-;
+      )-}
 {- todo: higher-prototype: check, what all these items do.
   handle teleportation processes by using a Reader which holds information
   on current global things like tp[char], switch etc.-}
@@ -249,26 +280,26 @@ playerInterferesWithT curr p =
 canBePredOf :: (Player,PlayerT,Player) -> (Player,PlayerT,Player) -> Bool
 (_,_act1,p1) `canBePredOf ` (p2,_act2,_) = p1 == p2 {- todo: -}
 
-hasFutureIf :: (Show a,Block b,Block c) => This b -> This c -> TimePos -> a -> (c -> Bool) -> ConditionsChecker
+hasFutureIf :: (Show a,Block b,Block c) => This b -> This c -> TimePos -> a -> (c -> Bool) -> Constraint b
 hasFutureIf ths oth (t,pos) o f =
   let dest = if ths `is_a` St then (t,pos) else (t+1,pos)
   in  mkSimpleCC dest $ unknownOkAnd (fromBool (show ((t,pos),ths) ++" requires future for "++show o ++ " at " ++ show (dest,oth)) . f) . getter oth
 ;
 
-hasPastIf :: (Show a,Block b,Block c) => This b -> This c -> TimePos -> a -> (c -> Bool) -> ConditionsChecker
+hasPastIf :: (Show a,Block b,Block c) => This b -> This c -> TimePos -> a -> (c -> Bool) -> Constraint b
 hasPastIf ths oth (t,pos) o f =
   let (dest,atBoundary) = if ths `is_a` St then ((t-1,pos),t <= 0) else ((t,pos),False)
   in  if atBoundary then alwaysOk
       else mkSimpleCC dest $ unknownOkAnd (fromBool (show ((t,pos),ths) ++" requires past for "++show o ++" at " ++ show (dest,oth)) . f) . getter oth
 ;
 
-phyObjInterferesWithT :: TimePos -> PhyObj -> PhyObjT -> ConditionsChecker
+phyObjInterferesWithT :: TimePos -> PhyObj -> PhyObjT -> Constraint BlockTr
 phyObjInterferesWithT _ _ _ = alwaysOk
 
-envInterferesWithT :: TimePos -> (Env,EnvT,Env) -> ConditionsChecker
+envInterferesWithT :: TimePos -> (Env,EnvT,Env) -> Constraint BlockTr
 envInterferesWithT _ _ = alwaysOk
 
-playerInterferesWith :: TimePos -> Player -> ConditionsChecker
+playerInterferesWith :: TimePos -> Player -> Constraint BlockSt
 playerInterferesWith curr p =
   isGrounded St curr p
   `also` isPermeable St curr p
@@ -276,7 +307,7 @@ playerInterferesWith curr p =
   `also` hasPastIf   St Tr curr p (not . MS.null . MS.filter ((p==) . thd3) . bctps)
 ;-- we don't require grounded-ness in the transition phase, because that will be handled by the check at the BlockTr.
 
-phyObjInterferesWith :: TimePos -> PhyObj -> ConditionsChecker
+phyObjInterferesWith :: TimePos -> PhyObj -> Constraint BlockSt
 phyObjInterferesWith curr o =
   isGrounded St curr o
   `also` isPermeable St curr o
@@ -291,7 +322,7 @@ phyObjInterferesWith curr o =
 validObjAction (TOrb _ _) _act = True
 validObjAction _           act = act `notElem` [TPsend,TPget]
 
-envInterferesWith :: TimePos -> Env -> ConditionsChecker
+envInterferesWith :: TimePos -> Env -> Constraint BlockSt
 envInterferesWith curr env =
   {- is grounded -}
   (if (case env of Door _ _ -> True; Switch _ -> True; _ -> False) then isGrounded St curr env else alwaysOk)
@@ -312,9 +343,9 @@ adjustGlobalInfo bct ch0 = foldM f ch0 (bctps bct) where
 -- a function crucial for concreteHistory.
 -- given a set of conditions to be satisfied,
 -- it searches for the simplest BlockSt that satisfies it.
-inferMinimal :: BC_Cons -> MayContra BlockSt
+inferMinimal :: Cons BlockSt -> MayContra BlockSt
 inferMinimal _ = failing "TODO: implement inferMinimal"
 
-inferMinimalT :: BCT_Cons -> MayContra BlockSt
+inferMinimalT :: Cons BlockSt -> MayContra BlockSt
 inferMinimalT _ = failing "TODO: implement inferMinimalT"
 

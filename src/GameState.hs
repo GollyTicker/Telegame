@@ -139,26 +139,26 @@ failPlayerObsOutOfBounds tpos ch = failing $ "applyPW[unusual]: players observat
 
 
 -- returns the set of contradiction descriptions currently in the ConsHistory
-contradictions :: ConsHistory -> [CondRes]
+contradictions :: ConsHistory -> [ConsResB]
 contradictions ch = {- we assume that out-of-bounds is a problem. -}
   do let (maxT,(maxX,maxY)) = chsize ch
      t <- [0..maxT]
      x <- [0..maxX]
      y <- ['A'..maxY]
      let curr = (t,(x,y))
-         checkbc  = maybe []{- unknowns ok -} (\bc  -> runChecks curr bc ch)
-         checkbct = maybe []{- unknowns ok -} (\bct -> runChecks curr bct ch)
-     uncurry (++) $ atCHboth curr ["block(T) "++show curr++" out-of-bounds"] checkbc checkbct ch
+         checkbc  = maybe []{- unknowns ok -} (\(bc::BlockSt)  -> runChecks curr bc ch)
+         checkbct = maybe []{- unknowns ok -} (\(bct::BlockTr) -> runChecks curr bct ch)
+     uncurry (++) $ todo --atCHboth curr ["block(T) "++show curr++" out-of-bounds"] checkbc checkbct ch
 ;
 
 {- MAIN FUNCTION: runChecks (from Block class) -}
-runChecks :: Block b => TimePos -> b -> ConsHistory -> [CondRes]
+runChecks :: Block b => TimePos -> b -> ConsHistory -> [ConsRes b]
 runChecks curr b ch =
-  let missing = findMissingIndices (ccneeds cc) ch
+  let missing = findMissingIndices (cneeds cc) ch
       cc = interferesWithBlock curr b
   in  filter isContradiction $ selfconsistent b : 
         if null missing
-          then ccrun cc (flatten (chspace ch)) (chglobal ch)
+          then [runCons cc (flatten (chspace ch)) (chglobal ch)]
           else map (listFailReferenceOutOfBounds curr) . toList $ missing
 ;
 
@@ -168,8 +168,8 @@ flatten mp = M.fromAscList (M.toAscList mp >>= \(t,mpi) -> M.toAscList mpi >>= \
 findMissingIndices :: S.Set TimePos -> ConsHistory -> S.Set TimePos
 findMissingIndices ks = (ks S.\\) . M.keysSet . flatten . chspace
 
-listFailReferenceOutOfBounds :: TimePos -> TimePos -> CondRes
-listFailReferenceOutOfBounds curr other = show curr ++ " references out-of-bounds "++show other
+listFailReferenceOutOfBounds :: TimePos -> TimePos -> ConsRes b
+listFailReferenceOutOfBounds curr other = notok $ show curr ++ " references out-of-bounds "++show other
 
 atCHSt :: TimePos -> a {- out of bounds -} -> (Maybe BlockSt -> a) -> ConsHistory -> a
 atCHSt tpos z f = fst . atCHboth tpos z f (const (error "atCH[1]: this cannot happen"))
