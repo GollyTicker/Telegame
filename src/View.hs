@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances, ScopedTypeVariables, StandaloneDeriving #-}
-{-# OPTIONS_GHC -Wall -fno-warn-orphans -Wno-name-shadowing #-}
+{-# OPTIONS_GHC -Wall -fno-warn-orphans -fno-warn-name-shadowing #-}
 
 module View (
     fromString

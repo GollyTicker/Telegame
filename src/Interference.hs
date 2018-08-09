@@ -1,11 +1,7 @@
 {-# LANGUAGE CPP,TupleSections,NamedFieldPuns,TypeFamilies,StandaloneDeriving,DeriveDataTypeable,FlexibleContexts,FlexibleInstances,TypeSynonymInstances,ScopedTypeVariables #-}
 -- GHC CPP macros: https://downloads.haskell.org/~ghc/8.0.1/docs/html/users_guide/phases.html#standard-cpp-macros
 -- https://guide.aelve.com/haskell/cpp-vww0qd72
-#if __GLASGOW_HASKELL__ >= 800
-{-# OPTIONS_GHC -Wall -Wno-orphans #-}
-#else
 {-# OPTIONS_GHC -Wall -fno-warn-orphans #-}
-#endif
 
 module Interference(
      module BaseBlock
@@ -48,7 +44,6 @@ instance Block BlockSt where
     -- => e.g. OneP p1 & OneP p1 & OneP p2 & Bgrd (Door 0 0) <=>
     -- BSCons MultiSet(p1,p1,p2) + Door 0 0 ==> ".P1. .P1. .P2. D00"
   type Antcpt BlockSt = Space (Maybe BlockSt)
-  type Other BlockSt = BlockTr
   data This BlockSt = St
   this = St
   getter St = fst
@@ -63,6 +58,7 @@ instance Block BlockSt where
   interferesWithBlock = interferesWith
   
   -- find the block where the player is and reduce all to that block.
+  {- todo: user interferences of player to reduce observations during closed eyes -}
   reduceToClosed Proxy spo@(Specific _ player _ mp) = spo {sobservations = (pos, mp M.! pos)}
     where pos = case (M.toList . M.filter (any (player==) . bcps) $ mp) of ((p,_):_) -> p ; [] -> error "reduceToClosed: Player not found"
   
@@ -79,7 +75,6 @@ instance Block BlockTr where
        ,bctcos :: MultiSet (Maybe PhyObj,Maybe PhyObjT,Maybe PhyObj)
     } deriving (Eq,Ord)
   type Antcpt BlockTr = Space (Maybe BlockTr)
-  type Other BlockTr = BlockSt
   data This BlockTr = Tr
   this = Tr
   getter Tr = snd
@@ -95,11 +90,11 @@ instance Block BlockTr where
   permeable    ths tpos = mkSTConsFromChoice ths tpos $ 
     (\l t r -> leastc{bctcenv=(l,t,r)}) <$> envPermeables   <*> envPermeablesT   <*> envPermeables
   
-    --fromBoolc (show (curr,Tr) ++ "requires remaining permeable for" ++ show reason) $
   selfconsistent _ = alwaysOk -- TODO: implement
   interferesWithBlock = interferesWithT
   
   -- get all block where the player is identified
+  {- todo: user interferences of player to reduce observations during closed eyes -}
   reduceToClosed Proxy spo@(Specific _ plyr _ mp) =   spo { sobservations = M.filter (any (\(p1,_,p2) -> p1 == plyr || p2 == plyr) . MS.toList . bctps) mp}
   
   applypwObs p@Proxy sobs fo fc = if peyes (splayer sobs) then fo sobs else fc (reduceToClosed p sobs)
@@ -147,7 +142,7 @@ mkSimpleSTCons :: Block b => This b -> TimePos -> Cons b -> ConsDesc -> STCons
 mkSimpleSTCons ths tpos cb str = mkSimpleSTConsWithGlobal ths tpos unknownGlobal cb str
 
 {- y-axis is pointed downwards -}
--- is1 ensures, that current position is on ground.
+-- isGrounded ensures, that current position is on ground.
 -- either through looking at below, or through a platform at same position
 isGrounded :: (Show a,Block b) => This b -> TimePos -> a -> STCons
 isGrounded ths curr@(t,(x,y)) reason =
@@ -224,8 +219,7 @@ concretize = todo {- use inferMinimal(T) -}
     ended up as Left.
 -}
 runSTCons :: ConsHistoryP -> STCons -> [ConsRes]
-runSTCons chp0 stcons = process $ 
-    foldExpr leaf allExpr anyExpr stcons $ chp0
+runSTCons chp0 stcons = foldExpr leaf allExpr anyExpr stcons $ chp0
   where
     {- apply constraint x. create singleton branch -}
     leaf x chp = [applyCons x chp]    :: [ConsRes]
@@ -249,9 +243,6 @@ runSTCons chp0 stcons = process $
     
     {- apply disjunction. keep branches separate. -}
     anyExpr fs chp = fs >>= ($chp) -- didnt expect this impl. to be that short...
-    
-    {- process intermed. results to final result -}
-    process = id
 ;
 
 

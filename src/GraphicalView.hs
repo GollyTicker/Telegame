@@ -1,5 +1,6 @@
 {-# LANGUAGE NamedFieldPuns,FlexibleInstances #-}
 {-# OPTIONS -Wall -fno-warn-missing-signatures #-}
+
 module GraphicalView (
      svgNS
     ,newSVGElem
@@ -12,7 +13,7 @@ module GraphicalView (
     
   ) where
 
-import Base
+import BaseBlock
 import ViewBase()
 import Data.Foldable
 import qualified Data.Map as M

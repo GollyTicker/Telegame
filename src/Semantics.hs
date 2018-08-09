@@ -1,24 +1,22 @@
 {-# LANGUAGE CPP #-}
-#if __GLASGOW_HASKELL__ >= 800
-{-# OPTIONS_GHC -Wall -Wno-missing-signatures #-}
-#else
 {-# OPTIONS_GHC -Wall -fno-warn-missing-signatures #-}
-#endif
-
 
 {- contains information on the semantics of blocks.
   as much as it could be refactored into this file -}
 
 module Semantics (
-    -- todo: export only whats nesessary
-     module Semantics
+     successors
+    ,predecessors
+    ,envOnStandables
+    ,envOnStandablesT
+    ,envInStandables
+    ,envInStandablesT
+    ,envPermeables
+    ,envPermeablesT
   )
   where
 
 import BaseBlock
-
-
-
 
 successors :: (PlayerT,Player) -> [(Player,PlayerT)]
 successors _ = [] -- TODO:

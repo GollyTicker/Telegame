@@ -9,8 +9,7 @@ import Data.Foldable
 import qualified Data.MultiSet as MS
 import qualified Data.Map as M
 
-import Base
-import View()
+import BaseBlock
 import GameState
 import Maps hiding (main)
 
@@ -147,28 +146,6 @@ mkSVGenv docBody = do
   appendChild svgEl r
   return svgEl
 ;
-{-
-runCanvasExample = do
-    cnvEl <- mkCanvas 200 100
-    appendChild documentBody cnvEl
-
-    Just cnv <- fromElem cnvEl
-    let pic = do
-        setFillColor (RGB 128 128 128)
-        fill $ circle (10,10) 40
-        text (60,60) "Hello you!"
-    render cnv pic
-;
-
-mkCanvas :: Double -> Double -> IO Elem
-mkCanvas w h = do
-  canvas <- newElem "canvas"
-  setProp canvas "width" (show w)
-  setProp canvas "height" (show h)
-  setStyle canvas "display" "block"
-  setStyle canvas "border" "1px solid #524F52"
-  return canvas
-;-}
 
 toHex :: Int -> String
 toHex n = if n <= 9 then show n else [['A'..'F'] !! (n-10)]

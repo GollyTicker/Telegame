@@ -56,7 +56,6 @@ class (Show (This a),Typeable a) => Block a where
   => using explicit constraints. BC_Cons and BCT_Cons
   -}
   type Antcpt a
-  type Other a
   data This a
   this :: This a
   getter :: This a -> Field -> Maybe a

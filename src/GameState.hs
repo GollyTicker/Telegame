@@ -143,7 +143,7 @@ contradictions ch = {- we assume that out-of-bounds is a problem. -}
      x <- [0..maxX]
      y <- ['A'..maxY]
      let curr = (t,(x,y))
-         checkbc  = maybe []{- unknowns ok -} (\(bc::BlockSt)  -> runChecks curr bc ch)
+         checkbc  = maybe []{- unknowns ok -} (\(bc::BlockSt)  -> runChecks curr bc  ch)
          checkbct = maybe []{- unknowns ok -} (\(bct::BlockTr) -> runChecks curr bct ch)
      uncurry (++)
       $ atCHboth curr
