@@ -26,7 +26,7 @@ module BaseBlock (
     ,unknownGlobal
     ,ConsHistory(..)
     ,ConsDesc
-    ,STCons(..)
+    ,STCons
     ,ConsHistoryP
     ,Expr(..)
     ,foldExpr
@@ -253,23 +253,26 @@ Distinction:
 {- STCons == Space-Time-Constraint. used for constraint creation.
   an unassociated key means, that there is no constraint on that field.
   [.] denoted choice. -}
-newtype STCons = STC {getSTCons :: [ConsHistoryP]}
+type STCons = Expr ConsHistoryP
 {- type denoting partial constructive constraints on history.
 constraint on CH_Global, on space-time blocks and it's reason
 for being there. -}
-type ConsHistoryP = Expr (CH_Global,M.Map TimePos (Cons BlockSt, Cons BlockTr),ConsDesc)
+type ConsHistoryP = (CH_Global,M.Map TimePos (Cons BlockSt, Cons BlockTr),ConsDesc)
 type ConsDesc = String
 -- result of running an STCons on a constraint history.
 type ConsRes = Either ConsDesc (M.Map TimePos Field,CH_Global)
 -- could also use tree.
-data Expr a = Leaf a | And (Expr a) (Expr a)
+data Expr a = Leaf a
+  | All [Expr a]
+  | Any [Expr a]
   deriving (Show,Eq,Ord)
 ;
-foldExpr :: (a -> b -> b) -> ((b -> b) -> (b -> b) -> b -> b) -> b -> Expr a -> b
-foldExpr leaf andExpr = go
-  where go z e = case e of
-            Leaf x     -> leaf x z
-            And  e1 e2 -> andExpr (`go` e1) (`go` e2) z
+foldExpr :: (a -> b) -> ([b] -> b) -> ([b] -> b) -> Expr a -> b
+foldExpr leaf allExpr anyExpr = go
+  where go e = case e of
+          Leaf x  -> leaf x
+          All  es -> allExpr (go <$> es)
+          Any  es -> anyExpr (go <$> es)
 
 --type ConsRes = Either ConsFail
 {-runCons :: M.Map TimePos Field -> CH_Global -> STCons -> [ConsRes]

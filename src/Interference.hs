@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP,TupleSections,NamedFieldPuns,TypeFamilies,StandaloneDeriving,DeriveDataTypeable,FlexibleContexts,ScopedTypeVariables #-}
+{-# LANGUAGE CPP,TupleSections,NamedFieldPuns,TypeFamilies,StandaloneDeriving,DeriveDataTypeable,FlexibleContexts,FlexibleInstances,TypeSynonymInstances,ScopedTypeVariables #-}
 -- GHC CPP macros: https://downloads.haskell.org/~ghc/8.0.1/docs/html/users_guide/phases.html#standard-cpp-macros
 -- https://guide.aelve.com/haskell/cpp-vww0qd72
 #if __GLASGOW_HASKELL__ >= 800
@@ -136,14 +136,14 @@ envPermeablesT = [Nothing]
 --mkGlobalCC cchg str = STC [Leaf (cchg,M.empty,str)]
 
 mkSTConsFromChoice :: Block b => This b -> TimePos -> [Cons b] -> ConsDesc -> STCons
-mkSTConsFromChoice ths tpos bcs str = STC $ 
+mkSTConsFromChoice ths tpos bcs str = Any $ 
     do bc <- bcs
        let mp = M.singleton tpos $ setter ths bc
        return $ Leaf (unknownGlobal,mp,str)
 
 mkSimpleSTConsWithGlobal :: Block b => This b -> TimePos -> CH_Global -> Cons b -> ConsDesc -> STCons
 mkSimpleSTConsWithGlobal ths tpos cchg cb str =
-  STC [Leaf (cchg,M.singleton tpos (setter ths cb),str)]
+  Leaf (cchg,M.singleton tpos (setter ths cb),str)
 
 mkSimpleSTCons :: Block b => This b -> TimePos -> Cons b -> ConsDesc -> STCons
 mkSimpleSTCons ths tpos cb str = mkSimpleSTConsWithGlobal ths tpos unknownGlobal cb str
@@ -171,16 +171,16 @@ concretec = todo
 -}
 
 okc :: ConsHistoryP
-okc = Leaf (unknownGlobal,M.empty,"ok")
+okc = (unknownGlobal,M.empty,"ok")
 
 alwaysOk :: STCons
-alwaysOk = STC [okc]
+alwaysOk = Leaf okc
 
-orElse :: STCons -> STCons -> STCons
-orElse a b = STC $ getSTCons a ++ getSTCons b
+orElse :: Expr a -> Expr a -> Expr a
+orElse a b = Any [a,b]
 
-also :: STCons -> STCons -> STCons
-also a b = STC $ And <$> getSTCons a <*> getSTCons b
+also :: Expr a -> Expr a -> Expr a 
+also a b = All  [a,b]
 
 instance Monoid STCons where
   mempty = alwaysOk
