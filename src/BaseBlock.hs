@@ -28,7 +28,7 @@ module BaseBlock (
     ,ConsDesc
     ,STCons
     ,ConsHistoryP
-    ,Expr(..)
+    ,Expr,eLeaf,eAll,eAny
     ,foldExpr
     ,ConsRes
     ,PlayerInput(..)
@@ -187,7 +187,6 @@ data ConsHistory =
 
 
 {- =============== CONSTRAINT ============= -}
--- TODO:
 {-
 
 Distinction:
@@ -224,6 +223,7 @@ Distinction:
    to encode full and partial observations. actually, partial
    observations suffice where a full observation is just a large set
    of partial observations + a flag to denote, that everything was observed.
+   => Could Use Cons BlockSt/Tr and ConsHistoryP
    
 3. for each object -> get countable and constructable constraints
    on self-block and other blocks and global information.
@@ -253,41 +253,38 @@ Distinction:
 {- STCons == Space-Time-Constraint. used for constraint creation.
   an unassociated key means, that there is no constraint on that field.
   [.] denoted choice. -}
-type STCons = Expr ConsHistoryP
+type STCons = Expr (ConsHistoryP,ConsDesc)
 {- type denoting partial constructive constraints on history.
 constraint on CH_Global, on space-time blocks and it's reason
 for being there. -}
-type ConsHistoryP = (CH_Global,M.Map TimePos (Cons BlockSt, Cons BlockTr),ConsDesc)
+type ConsHistoryP = (M.Map TimePos (Cons BlockSt, Cons BlockTr),CH_Global)
+{-
+  bool = True => all information in block is fully defined. it can now lead to contradictions.
+  bool = False => we have not provided all information, so constrainty may be
+    satisfied lateron after adding new elems. -}
 type ConsDesc = String
 -- result of running an STCons on a constraint history.
-type ConsRes = Either ConsDesc (M.Map TimePos Field,CH_Global)
+type ConsRes = (Maybe ConsHistoryP,ConsDesc)
 -- could also use tree.
 data Expr a = Leaf a
-  | All [Expr a]
-  | Any [Expr a]
+  | All [Expr a] {- non-empty list! -}
+  | Any [Expr a] {- non-empty list! -}
   deriving (Show,Eq,Ord)
 ;
+eLeaf :: a -> Expr a
+eLeaf = Leaf
+eAll :: [Expr a] -> Expr a
+eAll [] = error "eAll: bad argument"
+eAll xs = All xs
+eAny :: [Expr a] -> Expr a
+eAny = Any
+
 foldExpr :: (a -> b) -> ([b] -> b) -> ([b] -> b) -> Expr a -> b
 foldExpr leaf allExpr anyExpr = go
   where go e = case e of
           Leaf x  -> leaf x
           All  es -> allExpr (go <$> es)
           Any  es -> anyExpr (go <$> es)
-
---type ConsRes = Either ConsFail
-{-runCons :: M.Map TimePos Field -> CH_Global -> STCons -> [ConsRes]
-runCons = undefined-}
-{- a constraint. expects the current cons-history spacetime as well
-   as its global information. returns a list of constraints
-   conjuncted on the space-time. the list itself represents choice.
-   (e.g. if multiple different constraint are allowed).
-   -}
-{-data Constraint =
-  C {
-     cneeds  :: S.Set TimePos
-    ,runCons :: M.Map TimePos Field -> CH_Global -> [ConsRes]
-  }
-;-}
 
 {- ================= PLAYER-INPUT ===============
 precondition:

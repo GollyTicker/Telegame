@@ -20,11 +20,6 @@ padspaces xss =
       f txs x = replicate (n txs - length x) ' ' ++ x
   in  transpose $ map (\txs -> map (f txs) txs) (transpose xss)
 
--- enclosing encloses each string in the list of strings
--- with z and z' and then joins with the results
-enclosing :: String -> String -> [String] -> String
-enclosing z z' = intercalate " " . map (\x -> z ++ x ++ z')
-
 --toStringMultiMap :: (Show a, Show b) => M.Map a (MultiSet b) -> [String]
 --toStringMultiMap = concatMap (\(x,ms) -> map (\y -> show y ++ " " ++ show x) $ MS.toAscList ms) . M.toAscList
 
@@ -48,7 +43,7 @@ deriving instance Show PlayerInput
   
 instance Show BlockTr where
   show (BCT (env1,envt,env2) ots pts) =
-    let firstHalf = enclosing "[" "]" $ toStringMultiSet3 pts ++ toStringMultiSet3 ots 
+    let firstHalf = enclosing "[" " " "]" $ toStringMultiSet3 pts ++ toStringMultiSet3 ots 
         noChangeEnv = env1 == env2 && envt == EnvStays
         padTo n str = replicate (n - length str) ' ' ++ str
         envStr | noChangeEnv = show env1

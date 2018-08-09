@@ -2,19 +2,20 @@
 -- GHC CPP macros: https://downloads.haskell.org/~ghc/8.0.1/docs/html/users_guide/phases.html#standard-cpp-macros
 -- https://guide.aelve.com/haskell/cpp-vww0qd72
 #if __GLASGOW_HASKELL__ >= 800
-{-# OPTIONS_GHC -Wall -Wno-orphans -Wno-missing-signatures #-}
+{-# OPTIONS_GHC -Wall -Wno-orphans #-}
 #else
-{-# OPTIONS_GHC -Wall -fno-warn-orphans -fno-warn-missing-signatures #-}
+{-# OPTIONS_GHC -Wall -fno-warn-orphans #-}
 #endif
 
 module Interference(
      module BaseBlock
+    --,module Interference -- for ghci.
     
-    ,interferesWith
-    ,interferesWithT
+    ,allBlockConstraints
     ,inferMinimal
     ,inferMinimalT
     ,runSTCons
+    ,asPartialCH
     ,adjustGlobalInfo
     
     ,This(..)
@@ -24,12 +25,14 @@ module Interference(
   where
 
 import BaseBlock
+import Semantics
 import Data.Data
 import Control.Monad (foldM)
-import ViewBase()
+import ViewBase(enclosing)
 import qualified Data.Map as M
 import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MS
+import Control.Arrow (second)
 -- import Debug.Trace
 -- import Control.Applicative
 
@@ -52,9 +55,9 @@ instance Block BlockSt where
   setter St cb = (cb,leastc)
   leastc = BCC MS.empty MS.empty Nothing
   
-  on_standable ths tpos = mkSTConsFromChoice ths tpos (BCC MS.empty MS.empty <$> envOnStandables)
-  in_standable ths tpos = mkSTConsFromChoice ths tpos (BCC MS.empty MS.empty <$> envInStandables)
-  permeable    ths tpos = mkSTConsFromChoice ths tpos (BCC MS.empty MS.empty <$> envPermeables  )
+  on_standable ths tpos = mkSTConsFromChoice ths tpos ((\x->leastc{bccenv=x}) <$> envOnStandables)
+  in_standable ths tpos = mkSTConsFromChoice ths tpos ((\x->leastc{bccenv=x}) <$> envInStandables)
+  permeable    ths tpos = mkSTConsFromChoice ths tpos ((\x->leastc{bccenv=x}) <$> envPermeables  )
   
   selfconsistent _ = alwaysOk -- TODO: implement. required counting ability => BC_Cons and BCT_Cons
   interferesWithBlock = interferesWith
@@ -102,6 +105,10 @@ instance Block BlockTr where
   applypwObs p@Proxy sobs fo fc = if peyes (splayer sobs) then fo sobs else fc (reduceToClosed p sobs)
 ;
 
+allBlockConstraints :: Block b => TimePos -> b -> STCons
+allBlockConstraints curr b =
+  selfconsistent b `also` interferesWithBlock curr b
+
 deriving instance Data Player
 deriving instance Typeable Player
 deriving instance Data PlayerAction
@@ -122,28 +129,19 @@ deriving instance Typeable GameState
 is_a :: (Block b,Block c) => This b -> This c -> Bool
 ths `is_a` oth = typeOf ths == typeOf oth
 
-envOnStandables = [Just Solid]
-envOnStandablesT = [Nothing]
-
-envInStandables = [Just Platform]
-envInStandablesT = [Nothing]
-
-envPermeables = Just <$> [Blank,Platform,Switch False,Switch True] ++ (do n' <- [0..4]; h <- [0..n']; return (Door n' h))
-envPermeablesT = [Nothing]
-
 {- used for teleport-check in self-consistency -}
 --mkGlobalCC :: CH_Global -> ConsDesc -> STCons
 --mkGlobalCC cchg str = STC [Leaf (cchg,M.empty,str)]
 
 mkSTConsFromChoice :: Block b => This b -> TimePos -> [Cons b] -> ConsDesc -> STCons
-mkSTConsFromChoice ths tpos bcs str = Any $ 
+mkSTConsFromChoice ths tpos bcs str = eAny $ 
     do bc <- bcs
        let mp = M.singleton tpos $ setter ths bc
-       return $ Leaf (unknownGlobal,mp,str)
+       return $ eLeaf ((mp,unknownGlobal),str)
 
 mkSimpleSTConsWithGlobal :: Block b => This b -> TimePos -> CH_Global -> Cons b -> ConsDesc -> STCons
 mkSimpleSTConsWithGlobal ths tpos cchg cb str =
-  Leaf (cchg,M.singleton tpos (setter ths cb),str)
+  eLeaf ((M.singleton tpos (setter ths cb),cchg),str)
 
 mkSimpleSTCons :: Block b => This b -> TimePos -> Cons b -> ConsDesc -> STCons
 mkSimpleSTCons ths tpos cb str = mkSimpleSTConsWithGlobal ths tpos unknownGlobal cb str
@@ -170,33 +168,44 @@ concretec BCC{bccps,bccos,bccenv} =
 concretec = todo
 -}
 
-okc :: ConsHistoryP
-okc = (unknownGlobal,M.empty,"ok")
+okc :: (ConsHistoryP,ConsDesc)
+okc = ((M.empty,unknownGlobal),"ok")
 
 alwaysOk :: STCons
-alwaysOk = Leaf okc
+alwaysOk = eLeaf okc
 
 orElse :: Expr a -> Expr a -> Expr a
-orElse a b = Any [a,b]
+orElse a b = eAny [a,b]
 
 also :: Expr a -> Expr a -> Expr a 
-also a b = All  [a,b]
+also a b = eAll [a,b]
 
 instance Monoid STCons where
   mempty = alwaysOk
   mappend = also
 ;
 
+{- returns True iff all known blocks of left cons-history
+  satisfy everything in right partial cons-history-}
+satisfies :: ConsHistory -> ConsHistoryP -> Bool
+satisfies = todo
+
+concretize :: ConsHistoryP -> MayContra ConsHistory
+concretize = todo {- use inferMinimal(T) -}
+
 {- IMPORTANT FUNCTION:
-  runs a space-time constraint on a concrete constraint history.
+  runs a space-time constraint on a partial constraint history.
   either the constraint history is consistent with it, then
   a new constraint-history with minimal consistency requirements
   applied is returned. otherwise a description for the contradiction
   is given.
   for each viable alternative in 
   Uses: (a) check for inconsistencies in ConsHistory
-        (b) concretize the ConsHistory.
+        (b) building bock for concretizing the ConsHistory.
             this needs to walk time-by-time from t=0 to tMax to work properly
+            the concrete representation needs to be called from
+            outside, once, all constraints for a block have been checked.
+            (concretize >>= satisfies)
   Implementation:
     an STCons is violated, if the same contradiction is
     found in all possible solutions (e.g. all elements of the list).
@@ -214,10 +223,50 @@ instance Monoid STCons where
     Thus, the whole constraint was not satisfied, if every branch
     ended up as Left.
 -}
-runSTCons :: M.Map TimePos Field -> CH_Global -> STCons -> [ConsRes]
-runSTCons _ _ _ = [] {- TODO: implement. use foldExpr -}
+runSTCons :: ConsHistoryP -> STCons -> [ConsRes]
+runSTCons chp0 stcons = process $ 
+    foldExpr leaf allExpr anyExpr stcons $ chp0
+  where
+    {- apply constraint x. create singleton branch -}
+    leaf x chp = [applyCons x chp]    :: [ConsRes]
+    
+    {- fold through conjunction. try all alternatives, that arise. -}
+    allExpr fs chp =
+      let {- list of alternatives with a possible result (Maybe) and a stack of the applied constraints descriptions.
+             the head of each [ConsDesc] describes the first contradiction-leading constraint. -}
+          joints :: [(Maybe ConsHistoryP, [ConsDesc])]
+          joints       = foldr f [(Just chp,[]{-accum-})] fs
+            where f g tps =
+                    do (chp' ,ss)   <- tps
+                       case chp' of
+                         Nothing    -> return (chp',ss)
+                         Just chp'' -> second (:ss) <$> g chp''
+          {- non-empty ds ensured by non-empty fs. which is ensured by construction. -}
+      in  do (mchp,ds) <- joints
+             case mchp of
+               Nothing   -> return $ (Nothing ,"Joint requirements: {"++head ds++"} needs to be consistent with " ++ enclosing "{" "," "}" (tail ds))
+               Just chp' -> return $ (Just chp',"Joint requirements: " ++ enclosing "{" "," "}" ds)
+    
+    {- apply disjunction. keep branches separate. -}
+    anyExpr fs chp = fs >>= ($chp) -- didnt expect this impl. to be that short...
+    
+    {- process intermed. results to final result -}
+    process = id
+;
+
+
 --listFailReferenceOutOfBounds :: TimePos -> TimePos -> ConsRes
---listFailReferenceOutOfBounds curr other = Left $ show curr ++ " references out-of-bounds "++show other
+--listFailReferenceOutOfBounds curr other = maybeLeft $ show curr ++ " references out-of-bounds "++show other
+
+applyCons :: (ConsHistoryP,ConsDesc) -> ConsHistoryP -> (Maybe ConsHistoryP,ConsDesc)
+applyCons {-((cmp,cgl),desc) (mp0,gl0)-} = todo
+
+asPartialCH :: ConsHistory -> ConsHistoryP
+asPartialCH = todo
+{- turns a consistency history to a partial view of it. -}
+
+flatten :: Timed (Space a) -> M.Map TimePos a
+flatten mp = M.fromAscList (M.toAscList mp >>= \(t,mpi) -> M.toAscList mpi >>= \(pos,x) -> [((t,pos),x)])
 
 interferesWith :: TimePos -> BlockSt -> STCons
 interferesWith curr bc =
@@ -268,13 +317,6 @@ playerInterferesWithT curr p =
               Just d  -> mkSimpleSTCons Tr (applyDir d curr) leastc{bctcps=preds p} (fromReqStr d)
       )
 ;
-
-successors :: (PlayerT,Player) -> [(Player,PlayerT)]
-successors _ = [] -- TODO:
--- e,g. successors (Motion L D,p) -> [(p,Motion U D),(p,CompletedFalling)]
-
-predecessors :: (Player,PlayerT) -> [(PlayerT,Player)]
-predecessors _ = [] -- TODO.
 
 futureWith :: (Show a, Block b, Block c) => This b -> This c -> TimePos -> a -> Cons c -> STCons
 futureWith ths oth (t,pos) o cb =

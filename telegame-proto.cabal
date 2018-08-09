@@ -21,7 +21,7 @@ executable telegame-proto
                        containers,
                        QuickCheck,
                        multiset >= 0.3.4 && < 1
-  other-modules:       Base, BaseBlock, ViewBase, Interference, GameState, View, Maps
+  other-modules:       Base, BaseBlock, Semantics, ViewBase, Interference, GameState, View, Maps
 
 Test-Suite tests-basic
   hs-source-dirs:      src
@@ -32,4 +32,4 @@ Test-Suite tests-basic
                        containers,
                        QuickCheck,
                        multiset >= 0.3.4 && < 1
-  other-modules:       Base, BaseBlock, ViewBase, Interference, GameState, View
+  other-modules:       Base, BaseBlock, Semantics, ViewBase, Interference, GameState, View

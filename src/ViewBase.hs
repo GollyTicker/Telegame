@@ -7,6 +7,7 @@ module ViewBase(
      split
     ,toStrings
     ,safeLast
+    ,enclosing
   )
   where
 
@@ -45,6 +46,11 @@ split f s = foldr (\x (a:as) -> if f x then []:(a:as) else (x:a):as) [[]] s
 
 toStrings:: Show a => MultiSet a -> [String]
 toStrings = map show . MS.elems
+
+-- enclosing encloses each string in the list of strings
+-- with z and z' and then joins with the results
+enclosing :: String -> String -> String -> [String] -> String
+enclosing z i z' = intercalate i . map (\x -> z ++ x ++ z')
 
 instance {-# Overlapping #-} Show TimePos where
   show (t,pos) = "[t = " ++ show t ++ ", pos = " ++ show pos ++ "]"

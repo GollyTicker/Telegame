@@ -18,7 +18,6 @@ import qualified Data.Map as M
 import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MS
 import Data.Foldable
-import Data.Either (isLeft)
 import Control.Monad (foldM)
 import Control.Arrow (first,second,(***))
 
@@ -155,17 +154,12 @@ contradictions ch = {- we assume that out-of-bounds is a problem. -}
 {- checks the constraints for a single block. returns contradictions -}
 runChecks :: Block b => TimePos -> b -> ConsHistory -> [ConsDesc]
 runChecks curr b ch = 
-  let flatmp = flatten (chspace ch)
-      ress   = runSTCons flatmp (chglobal ch) (interferesWithBlock curr b)
-      self   = runSTCons flatmp (chglobal ch) (selfconsistent b)
-      collect xs = if all isLeft xs then getLeft <$> xs else []
-      getLeft (Left x) = x
-      getLeft (Right _) = undefined
-  in  collect ress ++ collect self
+  let chp    = asPartialCH ch
+      ress   = runSTCons chp (allBlockConstraints curr b)
+      collect xs = if all (isNothing.fst) xs then snd <$> xs else []
+      isNothing = maybe True (const False)
+  in  collect ress
 ;
-
-flatten :: Timed (Space a) -> M.Map TimePos a
-flatten mp = M.fromAscList (M.toAscList mp >>= \(t,mpi) -> M.toAscList mpi >>= \(pos,x) -> [((t,pos),x)])
 
 atCHSt :: TimePos -> a {- out of bounds -} -> (Maybe BlockSt -> a) -> ConsHistory -> a
 atCHSt tpos z f = fst . atCHboth tpos z f (const (error "atCH[1]: this cannot happen"))
@@ -185,7 +179,9 @@ insertCHSt (t,pos) b ch = ch { chspace = M.adjust (M.adjust (first  (const (Just
 insertCHTr :: TimePos -> BlockTr -> ConsHistory -> ConsHistory
 insertCHTr (t,pos) b ch = ch { chspace = M.adjust (M.adjust (second (const (Just b))) pos) t (chspace ch)}
 
-{- MAIN FUNCTION: finalizeHistory. should use runSTCons -}
+{- MAIN FUNCTION: finalizeHistory. should use runSTCons and concretize>>=satisfies.
+   concretize should only be called on a block, once ALL of others
+   constraints have been collected for it. -}
 -- specializes all Unkowns to a unique history
 -- or fails with contradictions.
 -- this is called at the end of all inputs to check if the room is solved.
