@@ -30,7 +30,7 @@ module BaseBlock (
     ,ConsHistoryP
     ,Expr(..)
     ,foldExpr
---    ,ConsRes
+    ,ConsRes
     ,PlayerInput(..)
   ) where
 
@@ -39,8 +39,6 @@ import Data.Data
 import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MS
 import qualified Data.Map as M
-import qualified Data.Maybe as Maybe
-
 
 {- general class to put together BlockTr and BlockSt. instantiations in Inference.hs -}
 type PWorld a = OpenObs a
@@ -79,9 +77,11 @@ data BlockSt = BC { bcps :: MultiSet Player, bcos :: MultiSet PhyObj, bcenv :: E
 ;
 data BlockTr = BCT {
     bctenv  :: (Env,EnvT,Env) -- old env, environment change, new env (possibly same)
-   ,bctos   :: MultiSet (PhyObj,PhyObjT,PhyObj) -- object motion. since objects can be multiple, each object is identified with a multiset of motions
-   ,bctps   :: MultiSet (Player,PlayerT,Player) -- player before -> action -> player after
-  }
+   ,bctos   :: MultiSet (PhyObj,PhyObjT,PhyObj) -- object change. similar to player.
+   ,bctps   :: MultiSet (Player,PlayerT,Player) -- player before -> action -> player after.
+  } -- if the player/object is created/destroyed,
+    -- then the first/last element in tuple is equal to the things initial/last state.
+    -- semantically, that element represents what the thing was/became before/after creation/destruction.
   deriving (Eq,Ord)
 
 fst3 :: (a,b,c) -> a
@@ -259,15 +259,17 @@ constraint on CH_Global, on space-time blocks and it's reason
 for being there. -}
 type ConsHistoryP = Expr (CH_Global,M.Map TimePos (Cons BlockSt, Cons BlockTr),ConsDesc)
 type ConsDesc = String
+-- result of running an STCons on a constraint history.
+type ConsRes = Either ConsDesc (M.Map TimePos Field,CH_Global)
 -- could also use tree.
 data Expr a = Leaf a | And (Expr a) (Expr a)
   deriving (Show,Eq,Ord)
 ;
-foldExpr :: (a -> b) -> (b -> b -> b) -> Expr a -> b
+foldExpr :: (a -> b -> b) -> ((b -> b) -> (b -> b) -> b -> b) -> b -> Expr a -> b
 foldExpr leaf andExpr = go
-  where go e = case e of
-            Leaf x -> leaf x
-            And e1 e2 -> andExpr (go e1) (go e2)
+  where go z e = case e of
+            Leaf x     -> leaf x z
+            And  e1 e2 -> andExpr (`go` e1) (`go` e2) z
 
 --type ConsRes = Either ConsFail
 {-runCons :: M.Map TimePos Field -> CH_Global -> STCons -> [ConsRes]
@@ -311,11 +313,8 @@ noActionSucc x = let xtr = f x in (xtr, g xtr)
        bcenv = thd3 bctenv
       ,bcps  = MS.map thd3 bctps
       ,bcos  = MS.map thd3 bctos
-      -- todo: these two lines may have wrong behavior, if the player/object is removed during the action
     }
 ;
-catMaybes ::Ord a => MultiSet (Maybe a) -> MultiSet a
-catMaybes = MS.fromList . Maybe.catMaybes . MS.toList
 
 noAction :: (Functor f, Functor g) => f (g BlockSt) -> f (g BlockTr)
 noAction = fmap (fmap (fst . noActionSucc))

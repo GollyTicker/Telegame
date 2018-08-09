@@ -216,15 +216,12 @@ runpa ml mr ju jul jur na pk pt tl tr newto ueo uem tele pa =
 toDirpa :: PlayerAction -> Maybe Dir
 toDirpa = runpa (j L) (j R) (j U) (j U) (j U)
           n (\_->n) (\_->n) (\_ _->n) (\_ _->n) (\_->n) (\_->n) (\_->n) (\_ _ _ _->n)
-  where
-    n = Nothing; j = Just
+
 ;
 -- called on a (Completed playerAction)
 fromDirpa :: PlayerAction -> Maybe Dir
 fromDirpa = runpa (j R) (j L) (j D) (j R) (j L)
           n (\_->n) (\_->n) (\_ _->n) (\_ _->n) (\_->n) (\_->n) (\_->n) (\_ _ _ _->n)
-  where
-    n = Nothing; j = Just
 ;
 
 runpat :: (PlayerAction -> a) -> 
@@ -273,8 +270,7 @@ runPhyObjT nomot mot lf inv grd tparr tpext tpsnd tpget o = case o of
 ;
 
 afterPhyObjT :: PhyObj -> PhyObjT -> Maybe PhyObj
-afterPhyObjT o = let jo = Just o; n = Nothing
-  in  runPhyObjT jo (\_ _->n) (\_->jo) n jo (\_->jo) (\_->n) n n
+afterPhyObjT o = runPhyObjT (j o) (\_ _->n) (\_->j o) n (j o) (\_->j o) (\_->n) n n
 
 n :: Maybe a
 n = Nothing
