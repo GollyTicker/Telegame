@@ -75,13 +75,9 @@ instance Block BlockTr where
   type ClosedObs BlockTr = Specific (Space BlockTr)
   data Cons BlockTr =
       BCTC {
-        bctcInit :: Maybe Env
-       ,bctcEnvT :: Maybe EnvT
-       ,bctcEnd  :: Maybe Env
-       ,bctcToFutrP :: MultiSet Player
-       ,bctcToFutrO :: MultiSet PhyObj
-       ,bctcFromPastP :: MultiSet Player
-       ,bctcFromPastO :: MultiSet PhyObj
+        bctcEnv  :: (Maybe Env, Maybe EnvT, Maybe Env)
+       ,bctcps :: MultiSet (Maybe Player,Maybe PlayerT,Maybe Player)
+       ,bctcos :: MultiSet (Maybe PhyObj,Maybe PhyObjT,Maybe PhyObj)
     } deriving (Eq,Ord)
   type Antcpt BlockTr = Space (Maybe BlockTr)
   type Other BlockTr = BlockSt
@@ -89,16 +85,16 @@ instance Block BlockTr where
   this = Tr
   getter Tr = snd
   setter Tr cb = (leastc,cb)
-  leastc = BCTC Nothing Nothing Nothing MS.empty MS.empty MS.empty MS.empty
+  leastc = BCTC (Nothing,Nothing,Nothing) MS.empty MS.empty
   
   on_standable ths tpos = mkSTConsFromChoice ths tpos $ 
-    (\l t r -> leastc{bctcInit=l,bctcEnvT=t,bctcEnd=r}) <$> envOnStandables <*> envOnStandablesT <*> envOnStandables
+    (\l t r -> leastc{bctcEnv=(l,t,r)}) <$> envOnStandables <*> envOnStandablesT <*> envOnStandables
   
   in_standable ths tpos = mkSTConsFromChoice ths tpos $ 
-    (\l t r -> leastc{bctcInit=l,bctcEnvT=t,bctcEnd=r}) <$> envInStandables <*> envInStandablesT <*> envInStandables
+    (\l t r -> leastc{bctcEnv=(l,t,r)}) <$> envInStandables <*> envInStandablesT <*> envInStandables
     
   permeable    ths tpos = mkSTConsFromChoice ths tpos $ 
-    (\l t r -> leastc{bctcInit=l,bctcEnvT=t,bctcEnd=r}) <$> envPermeables   <*> envPermeablesT   <*> envPermeables
+    (\l t r -> leastc{bctcEnv=(l,t,r)}) <$> envPermeables   <*> envPermeablesT   <*> envPermeables
   
     --fromBoolc (show (curr,Tr) ++ "requires remaining permeable for" ++ show reason) $
   selfconsistent _ = todo -- TODO: implement
@@ -162,36 +158,18 @@ isGrounded :: (Show a,Block b) => This b -> TimePos -> a -> STCons
 isGrounded ths curr@(t,(x,y)) reason =
   let below = (t,(x,succ y))
   in  in_standable ths curr (show (curr,ths) ++ " needs standable (cause: "++show reason++") in "++ show  curr)
-        `orElse` on_standable ths below (show (curr,ths) ++ " needs standable (cause: "++show reason++") on "++ show below)
+      `orElse` on_standable ths below (show (curr,ths) ++ " needs standable (cause: "++show reason++") on "++ show below)
 ;
 
 isPermeable :: (Block b,Show a) => This b -> TimePos -> a -> STCons
-isPermeable ths curr reason = todo --mkSimpleCC curr $ unknownOkAnd (permeable curr reason) . getter ths
--- -- fromBoolc (show (curr,St) ++ " requires permeable for " ++ show reason) $ envPermeable (bcenv bc)
-
--- a condition checker specified a set of TimePos
--- it wants to access. it also specifies a function which gets
--- a partial view of the spacetime to conclude whether the condition is satisfied or not
--- STCons b is a Monoid.
--- CondRes only has a 0-Element, but no binary operation for it.
-{- DIFINITION in Base -}
-#if __GLASGOW_HASKELL__ >= 840
-instance Semigroup (STCons b) where -- required by Monoid, since GHC 8.
-  (<>) = also
-;
-#else
-#endif
-instance Monoid STCons where
-  mempty = alwaysOk
-  mappend = also
-;
+isPermeable ths curr reason = permeable ths curr (show (curr,ths) ++ " requires permeability (cause: " ++ show reason ++ ")")
 
 {- connectives and neutral-elem for building STCons from others. -}
-{- appended `c` for Cons b and ConsRes b related functions -}
+{- appended `c` for Cons b and ConsRes b related functions 
 --leastc :: TimePos -> Cons a
 --concretec :: TimePos -> Cons a -> Either ConsFail a
-{- andc :: Cons a -> Cons a -> Either ConsFail (Cons a) -}
-{- satisfiesc :: a -> Cons a -> Maybe ConsFail
+andc :: Cons a -> Cons a -> Either ConsFail (Cons a)
+satisfiesc :: a -> Cons a -> Maybe ConsFail
 
 concretec BCC{bccps,bccos,bccenv} =
   maybeToEither "No minimal env possible dueto unknown env." $ (\env -> BC {bcps = bccps, bcos=bccos, bcenv = env}) <$> bccenv 
@@ -290,13 +268,26 @@ playerInterferesWithT curr p =
 
 canBePredOf :: (Player,PlayerT,Player) -> (Player,PlayerT,Player) -> Bool
 (_,_act1,p1) `canBePredOf ` (p2,_act2,_) = p1 == p2 {- todo: -}
+-}
+-- auto-check type on object and insert it into the appropriate place
+-- in the Cons x.
 
-hasFutureIf :: (Show a,Block b,Block c) => This b -> This c -> TimePos -> a -> (c -> Bool) -> STCons
-hasFutureIf ths oth (t,pos) o f =
+futureWith :: (Show a, Block b, Block c) => This b -> This c
+              -> TimePos -> a -> Cons c -> STCons
+futureWith ths oth (t,pos) o cb =
   let dest = if ths `is_a` St then (t,pos) else (t+1,pos)
-  in  mkSimpleCC dest $ unknownOkAndc (fromBoolc (show ((t,pos),ths) ++" requires future for "++show o ++ " at " ++ show (dest,oth)) . f) . getter oth
-;
+  in  mkSimpleSTCons oth dest cb
+      $ show ((t,pos),ths) ++" requires future for "++show o ++ " at " ++ show (dest,oth)
 
+pastWith :: (Show a, Block b, Block c) => This b -> This c
+              -> TimePos -> a -> Cons c -> STCons
+pastWith ths oth (t,pos) o cb =
+  let (dest,atBoundary) = if ths `is_a` St then ((t-1,pos),t <= 0) else ((t+1,pos),False)
+  in  if atBoundary then alwaysOk
+      else mkSimpleSTCons oth dest cb
+        $ show ((t,pos),ths) ++" requires past for "++show o ++ " at " ++ show (dest,oth)
+
+{-
 hasPastIf :: (Show a,Block b,Block c) => This b -> This c -> TimePos -> a -> (c -> Bool) -> STCons
 hasPastIf ths oth (t,pos) o f =
   let (dest,atBoundary) = if ths `is_a` St then ((t-1,pos),t <= 0) else ((t,pos),False)
@@ -305,34 +296,29 @@ hasPastIf ths oth (t,pos) o f =
 ;
 
 phyObjInterferesWithT :: TimePos -> PhyObj -> PhyObjT -> STCons
-phyObjInterferesWithT _ _ _ = alwaysOk
+phyObjInterferesWithT _ _ _ = todo
 
 envInterferesWithT :: TimePos -> (Env,EnvT,Env) -> STCons
-envInterferesWithT _ _ = alwaysOk
-
+envInterferesWithT _ _ = todo
+-}
 playerInterferesWith :: TimePos -> Player -> STCons
 playerInterferesWith curr p =
   isGrounded St curr p
   `also` isPermeable St curr p
-  `also` hasFutureIf St Tr curr p (not . MS.null . MS.filter ((p==) . fst3) . bctps)
-  `also` hasPastIf   St Tr curr p (not . MS.null . MS.filter ((p==) . thd3) . bctps)
+  `also` futureWith  St Tr curr p leastc{bctcps = MS.singleton (j p,n,  n)}
+  `also` pastWith    St Tr curr p leastc{bctcps = MS.singleton (n  ,n,j p)}
 ;-- we don't require grounded-ness in the transition phase, because that will be handled by the check at the BlockTr.
 
 phyObjInterferesWith :: TimePos -> PhyObj -> STCons
 phyObjInterferesWith curr o =
   isGrounded St curr o
   `also` isPermeable St curr o
-  `also` hasFutureIf St Tr curr o existsInT
-  `also` hasPastIf   St Tr curr o existsInT
-  where
-    existsInT bct = maybe False (all (validObjAction o)) $ M.lookup o (bctos bct)
+  `also` futureWith St Tr curr o leastc{bctcos = MS.singleton (n,n,j o)}
+  `also` pastWith   St Tr curr o leastc{bctcos = MS.singleton (j o,n,n)}
 -- physical objects are only checked, when they are on ground.
 -- they are not checked, when they are in doors or in player's inventories.
 ;
-
-validObjAction (TOrb _ _) _act = True
-validObjAction _           act = act `notElem` [TPsend,TPget]
-
+{-
 envInterferesWith :: TimePos -> Env -> STCons
 envInterferesWith curr env =
   {- is grounded -}

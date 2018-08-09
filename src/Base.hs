@@ -23,6 +23,8 @@ module Base(
     ,fromDirpa
     ,PlayerT(..)
     ,runpat
+    ,n -- Nothing
+    ,j -- Just
   )
   where
 
@@ -103,6 +105,7 @@ data Dir = L | U | R |D
 
 data PhyObj = TOrb Char Int {- identifier, int is 0 or 1 -}
             | Key
+    -- could model destroyed tele-orbs here. they would be useful lateron anyways.
   deriving (Ord,Eq,Data,Typeable)
 
 data Env = Door { dneeds :: Int, dhas :: Int } {- # keys needed, # keys inside. both have to be <=9 -}
@@ -272,5 +275,11 @@ runPhyObjT nomot mot lf inv grd tparr tpext tpsnd tpget o = case o of
 afterPhyObjT :: PhyObj -> PhyObjT -> Maybe PhyObj
 afterPhyObjT o = let jo = Just o; n = Nothing
   in  runPhyObjT jo (\_ _->n) (\_->jo) n jo (\_->jo) (\_->n) n n
+
+n :: Maybe a
+n = Nothing
+
+j :: a -> Maybe a
+j = Just
 
 

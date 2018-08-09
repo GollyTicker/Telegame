@@ -79,7 +79,7 @@ data BlockSt = BC { bcps :: MultiSet Player, bcos :: MultiSet PhyObj, bcenv :: E
 ;
 data BlockTr = BCT {
     bctenv  :: (Env,EnvT,Env) -- old env, environment change, new env (possibly same)
-   ,bctos   :: M.Map PhyObj (MultiSet PhyObjT) -- object motion. since objects can be multiple, each object is identified with a multiset of motions
+   ,bctos   :: MultiSet (PhyObj,PhyObjT,PhyObj) -- object motion. since objects can be multiple, each object is identified with a multiset of motions
    ,bctps   :: MultiSet (Player,PlayerT,Player) -- player before -> action -> player after
   }
   deriving (Eq,Ord)
@@ -304,14 +304,14 @@ noActionSucc :: BlockSt -> (BlockTr,BlockSt)
 noActionSucc x = let xtr = f x in (xtr, g xtr)
   where f (BC ps os env) = BCT {
        bctenv = (env,EnvStays,env)
-      ,bctos = M.fromListWith MS.union $ map (,MS.singleton NoMotionT) $ MS.toList os
+      ,bctos = MS.map (\o -> (o,NoMotionT,o)) os
       ,bctps = MS.map (\p -> (p,Completed NoAction,p)) ps
     }
         g BCT{bctenv,bctos,bctps} = BC{
        bcenv = thd3 bctenv
       ,bcps  = MS.map thd3 bctps
-      ,bcos  = MS.unions . M.elems
-        . M.mapWithKey (\o -> catMaybes . MS.map (afterPhyObjT o)) $ bctos
+      ,bcos  = MS.map thd3 bctos
+      -- todo: these two lines may have wrong behavior, if the player/object is removed during the action
     }
 ;
 catMaybes ::Ord a => MultiSet (Maybe a) -> MultiSet a

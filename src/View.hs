@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances, ScopedTypeVariables, StandaloneDeriving #-}
-{-# OPTIONS_GHC -Wall -fno-warn-orphans #-}
+{-# OPTIONS_GHC -Wall -fno-warn-orphans -Wno-name-shadowing #-}
 
 module View (
     fromString
@@ -8,8 +8,6 @@ module View (
 
 import Interference
 import ViewBase
-import Data.Typeable (cast)
-import Data.Maybe (fromJust)
 import Data.List (intercalate,transpose)
 import qualified Data.Map as M
 import Data.MultiSet (MultiSet)
@@ -27,8 +25,8 @@ padspaces xss =
 enclosing :: String -> String -> [String] -> String
 enclosing z z' = intercalate " " . map (\x -> z ++ x ++ z')
 
-toStringMultiMap :: (Show a, Show b) => M.Map a (MultiSet b) -> [String]
-toStringMultiMap = concatMap (\(x,ms) -> map (\y -> show y ++ " " ++ show x) $ MS.toAscList ms) . M.toAscList
+--toStringMultiMap :: (Show a, Show b) => M.Map a (MultiSet b) -> [String]
+--toStringMultiMap = concatMap (\(x,ms) -> map (\y -> show y ++ " " ++ show x) $ MS.toAscList ms) . M.toAscList
 
 toStringMultiSet3 :: (Show a, Show b) => MultiSet (a,b,a) -> [String]
 toStringMultiSet3 = map (\(a,b,a') -> show a ++" "++show b++" "++show a') . MS.toList
@@ -47,17 +45,10 @@ deriving instance Show (Cons BlockSt)
 deriving instance Show (Cons BlockTr)
 deriving instance Show EnvT
 deriving instance Show PlayerInput
-
-instance Show ConsResB where
-  show (CR (consres::ConsRes b)) =
-    let str = if (this :: This b) `is_a` St
-          then show (fromJust $ cast consres :: ConsRes BlockSt)
-          else show (fromJust $ cast consres :: ConsRes BlockTr)
-    in  concat ["CR (",str,")"]
   
 instance Show BlockTr where
   show (BCT (env1,envt,env2) ots pts) =
-    let firstHalf = enclosing "[" "]" $ toStringMultiSet3 pts ++ toStringMultiMap ots 
+    let firstHalf = enclosing "[" "]" $ toStringMultiSet3 pts ++ toStringMultiSet3 ots 
         noChangeEnv = env1 == env2 && envt == EnvStays
         padTo n str = replicate (n - length str) ' ' ++ str
         envStr | noChangeEnv = show env1
