@@ -10,7 +10,7 @@ module ViewBase(
   )
   where
 
-import Base
+import BaseBlock
 import Data.List (intercalate)
 import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MS
@@ -28,7 +28,7 @@ instance Show PhyObj where
 ;
 
 instance Show Env where
-  show (Door n h) = "D"++show n ++ show h
+  show (Door n' h) = "D"++show n' ++ show h
   show Solid = "S"
   show Blank = ""
   show Platform = "_"
@@ -140,7 +140,7 @@ instance Read Env where
   readsPrec _ "_" = [(Platform,"")]
   readsPrec _ "" = [(Blank,"")]
   readsPrec _ " " = [(Blank,"")]
-  readsPrec _ ['D',n,h] = [(Door (read (n:"")) (read (h:"")),"")]
+  readsPrec _ ['D',n',h] = [(Door (read (n':"")) (read (h:"")),"")]
   readsPrec _ "sw0" = [(Switch False,"")]
   readsPrec _ "sw1" = [(Switch True,"")]
 {-readsPrec _ ('m':dir:tm2:tm1:tc2:tc1:rest) =

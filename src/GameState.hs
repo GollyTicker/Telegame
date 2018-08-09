@@ -4,7 +4,7 @@
 module GameState (
      mkGSfromObs
     ,initGS
-    ,addInput
+    ,runTurn
     ,finalizeHistory
     
     {- debug -}
@@ -14,15 +14,13 @@ module GameState (
 
 import Interference
 import View() -- Show instances for error messages
-import qualified Data.Set as S
 import qualified Data.Map as M
 import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MS
 import Data.Foldable
--- import Data.Maybe (maybeToList)
+import Data.Either (isLeft)
 import Control.Monad (foldM)
 import Control.Arrow (first,second,(***))
--- first: apply function on fst-element in tuple; f *** g = \(a,b) -> (f a,g b)
 
 -- import Debug.Trace
 
@@ -134,43 +132,40 @@ failPlayObsContraHistory tpos b b' = failing $ "applyPW: players observation con
 failPlayerObsOutOfBounds :: TimePos -> ConsHistory -> MayContra a
 failPlayerObsOutOfBounds tpos ch = failing $ "applyPW[unusual]: players observation "++show tpos++" is out-of-bounds in history. history size = "++ show (chsize ch) ++ ", with ch:\n" ++ show ch
 
-
 -- TODO: consistency check can be made faster by memoizing
 -- the bidirectional-dependencies. similarities to arc-consistency algo. for Constraint Solving Networks
 
 
 -- returns the set of contradiction descriptions currently in the ConsHistory
-contradictions :: ConsHistory -> [CondRes]
+contradictions :: ConsHistory -> [ConsDesc]
 contradictions ch = {- we assume that out-of-bounds is a problem. -}
   do let (maxT,(maxX,maxY)) = chsize ch
      t <- [0..maxT]
      x <- [0..maxX]
      y <- ['A'..maxY]
      let curr = (t,(x,y))
-         checkbc  = maybe []{- unknowns ok -} (\bc  -> runChecks curr bc ch)
-         checkbct = maybe []{- unknowns ok -} (\bct -> runChecks curr bct ch)
-     uncurry (++) $ atCHboth curr ["block(T) "++show curr++" out-of-bounds"] checkbc checkbct ch
+         checkbc  = maybe []{- unknowns ok -} (\(bc::BlockSt)  -> runChecks curr bc ch)
+         checkbct = maybe []{- unknowns ok -} (\(bct::BlockTr) -> runChecks curr bct ch)
+     uncurry (++)
+      $ atCHboth curr
+        ["block(T) "++show curr++" out-of-bounds"]
+        checkbc checkbct ch
 ;
 
-{- MAIN FUNCTION: runChecks (from Block class) -}
-runChecks :: Block b => TimePos -> b -> ConsHistory -> [CondRes]
-runChecks curr b ch =
-  let missing = findMissingIndices (ccneeds cc) ch
-      cc = interferesWithBlock curr b
-  in  filter isContradiction $ selfconsistent b : 
-        if null missing
-          then ccrun cc (flatten (chspace ch)) (chglobal ch)
-          else map (listFailReferenceOutOfBounds curr) . toList $ missing
+{- checks the constraints for a single block. returns contradictions -}
+runChecks :: Block b => TimePos -> b -> ConsHistory -> [ConsDesc]
+runChecks curr b ch = 
+  let flatmp = flatten (chspace ch)
+      ress   = runSTCons flatmp (chglobal ch) (interferesWithBlock curr b)
+      self   = runSTCons flatmp (chglobal ch) (selfconsistent b)
+      collect xs = if all isLeft xs then getLeft <$> xs else []
+      getLeft (Left x) = x
+      getLeft (Right _) = undefined
+  in  collect ress ++ collect self
 ;
 
 flatten :: Timed (Space a) -> M.Map TimePos a
 flatten mp = M.fromAscList (M.toAscList mp >>= \(t,mpi) -> M.toAscList mpi >>= \(pos,x) -> [((t,pos),x)])
-
-findMissingIndices :: S.Set TimePos -> ConsHistory -> S.Set TimePos
-findMissingIndices ks = (ks S.\\) . M.keysSet . flatten . chspace
-
-listFailReferenceOutOfBounds :: TimePos -> TimePos -> CondRes
-listFailReferenceOutOfBounds curr other = show curr ++ " references out-of-bounds "++show other
 
 atCHSt :: TimePos -> a {- out of bounds -} -> (Maybe BlockSt -> a) -> ConsHistory -> a
 atCHSt tpos z f = fst . atCHboth tpos z f (const (error "atCH[1]: this cannot happen"))
@@ -190,8 +185,7 @@ insertCHSt (t,pos) b ch = ch { chspace = M.adjust (M.adjust (first  (const (Just
 insertCHTr :: TimePos -> BlockTr -> ConsHistory -> ConsHistory
 insertCHTr (t,pos) b ch = ch { chspace = M.adjust (M.adjust (second (const (Just b))) pos) t (chspace ch)}
 
-
-{- MAIN FUNCTION: finalizeHistory. should use runChecks -}
+{- MAIN FUNCTION: finalizeHistory. should use runSTCons -}
 -- specializes all Unkowns to a unique history
 -- or fails with contradictions.
 -- this is called at the end of all inputs to check if the room is solved.
@@ -205,8 +199,6 @@ finalizeHistory _ = failing "TODO: implement finalizeHistory"
 foldlWithKeyM :: Monad m => (k -> a -> b -> m b) -> b -> M.Map k a -> m b
 foldlWithKeyM f z = foldM (flip $ uncurry f) z . M.toAscList
 
--- TEST: consHistory (initGS pws) == initConsHistory _size pws
-
 defaultConsHistory :: (Time,Pos) -> ConsHistory
 defaultConsHistory (tmax,pmax) =
   CH {
@@ -219,36 +211,43 @@ default2DMap :: Pos -> a -> Space a
 default2DMap (sx,sy) e = M.fromList $ (\x y -> ((x,y),e)) <$> [0..sx] <*> ['A'..sy]
 ;
 
+{- used in runTurn
 extendCHTo :: Time -> ConsHistory -> ConsHistory
 extendCHTo tMax ch@CH{chsize,chspace} =
   let new = M.union chspace $ M.fromList
         $ (,default2DMap (snd chsize) (Nothing,Nothing))
           <$> [fst chsize..tMax]
   in  ch{chspace = new}
-
-addToObservations :: (Time,PWorld BlockTr,PWorld BlockSt)
-                      -> GameState -> MayContra GameState
-addToObservations (t,pobsT,pobs) (GS obs ch0) = do
-  let newObs = M.fromList [(t  ,(MS.empty         , MS.singleton pobsT)),
-                           (t+1,(MS.singleton pobs, MS.empty          ))]
-      merge (ms1,mst1) (ms2,mst2) = (MS.union ms1 ms2,MS.union mst1 mst2)
-  newCH <- applyAllObservations newObs (extendCHTo (t+1) ch0)
-  return $ GS (M.unionWith merge obs newObs) newCH
-;
-
-{- USING: computeCHfromObs OK,
-          data-type GameState OK,
-          plyrInputAsObs OK
+-}
+{- IMPORTANT TODO:
+    I need a way to allow multiple players to move at once.
+    If only once player moves, then inserting their observations
+    will lead to contradictions lateron on the other player - even
+    for valid inputs.
+    What can come to rescue, is that Observations may only be added
+    in a batch for each Time. Then once all players have their inputs
+    fixed, there is no room left and one can add all of their
+    collective observations together.
+    -}
+{- USING: computeCHfromObs,
+          data-type GameState,
+          findPWorldInGameState
+          inputToObs,
+          noActionSucc
   ASSUME: gamestate has valid consistency history pre-computed
           and where the gamestate istself is already consistent.
   FUNCTION:
-    adds the players input into the gamestate.
-    either returns with immediate inconsistency warnings
-    or returns a new updated gamestate
+    runs all the players actions on the current gamestate at time
+    t to t+1. It checks, that the map of actions truely contains
+    all actionable players - otherwise not all actions are defined and
+    it errors with "not enough actions".
+    It might succeed with a new successive gamestate with
+    new observations and an updates consistency history OR
+    it returns contradiction warnings.
 -}
-addInput :: GameState -> Specific PlayerInput -> MayContra GameState
-addInput gs0 spi =
-  let obs = inputToObs _ -- spi todo: get specific players pworld-view
-  in  addToObservations obs gs0
+runTurn :: GameState -> Time -> M.Map Player (MultiSet PlayerInput) -> MayContra GameState
+runTurn _gs0 _t _mmspi = undefined {-do
+  pw <- findPWorldInGameState gs0 spi
+  let obs = inputToObs (fmap (sobservations pw,) spi)
+  addToObservations obs gs0-}
 ;
-

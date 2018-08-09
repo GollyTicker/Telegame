@@ -4,6 +4,7 @@ module GraphicalView (
      svgNS
     ,newSVGElem
     ,Info(..)
+    ,dflt
     ,Draw(..)
     ,under
     ,tell
@@ -16,7 +17,7 @@ import ViewBase()
 import Data.Foldable
 import qualified Data.Map as M
 
-import Control.Monad (zipWithM_,when,void)
+import Control.Monad (zipWithM_,void)
 import Haste.DOM hiding (with)
 import qualified Haste.DOM as HD
 
@@ -55,12 +56,20 @@ newSVGElem = liftIO . ffi (toJSStr ffiCode)
     ffiCode = "(function(t){return document.createElementNS("++show svgNS++",t);})"
 ;
 
+dflt = Info{parent=undefined,tr=(0,0),pd=(0,0),sc=(1,1),brd=Nothing,t0=0,t=0,t1=1}
+
 data Info = Info {
     parent :: Elem {- element to attach it as a child -}
    ,tr     :: (Double,Double)
    ,pd     :: (Double,Double)
    ,sc     :: (Double,Double)
    ,brd    :: Maybe Double
+   {- the following attrs. are only animation relevant -}
+   ,t      :: Double {- 0 <= t0 <= t <= t1 <= 1. draw frame t of transition object t. -}
+   ,t0     :: Double
+   ,t1     :: Double
+   {- start and end of animation. e.g. used,
+   when an object is thrown through multiple blocks -}
 }  deriving (Show)
 {- style information? -}
 instance Show Elem where show _ = "<elem>"
@@ -153,7 +162,7 @@ instance Draw Env where
     let opened = h >= n
     _ <- g `addSVG` if opened then "door-opened.svg" else "door-closed.svg"
     
-    let stk = Info{parent=g,tr=(0.1,0.63),sc=(0.25,0.25),pd=(0.0,0.02),brd=Nothing}
+    let stk = dflt{parent=g,tr=(0.1,0.63),sc=(0.25,0.25),pd=(0.0,0.02),brd=Nothing}
     stack 0 (0,-1) stk [1  ..h] (\_ inf -> addSVG g "keyinside.svg" `transform` inf)
     stack h (0,-1) stk [h+1..n] (\_ inf -> addSVG g "keyhole.svg"   `transform` inf)
     
@@ -167,8 +176,8 @@ instance Draw Player where
   draw info (Player s op inv) = do
     g <- newSVGElem "g" `under` parent info
     _ <- addSVG g (if op then "player-opened.svg" else "player-closed.svg")
-      `transform` Info{tr=(0,0.3),sc=(0.7,0.7),brd=Nothing,pd=undefined,parent=undefined}
-    let stk = Info{parent=g,tr=(0.7,0.1),sc=(0.28,0.28),pd=(0.0,0.03),brd=Nothing}
+      `transform` dflt{tr=(0,0.3),sc=(0.7,0.7),brd=Nothing}
+    let stk = dflt{parent=g,tr=(0.7,0.1),sc=(0.28,0.28),pd=(0.0,0.03),brd=Nothing}
     stack 0 (0,1) stk (toList inv) drawWith
     txt <- newSVGElem "text" `with` (unitBBf 0.15 0.3 ++ [
         attr "font-size" =: "0.24", attr "fill" =: "black"
@@ -181,12 +190,12 @@ instance Draw BlockSt where
   draw info (BC ps os e) = do
     g <- newSVGElem "g" `under` parent info
     
-    _ <- drawWith e Info{parent=g,tr=(0.5,0),sc=(0.5,0.5),pd=(0,0),brd=Nothing}
+    _ <- drawWith e dflt{parent=g,tr=(0.5,0),sc=(0.5,0.5),pd=(0,0),brd=Nothing}
     
-    let osStk = Info{parent=g,tr=(0.05,0.05),sc=(0.28,0.28),pd=(-0.15,-0.2),brd=Nothing}
+    let osStk = dflt{parent=g,tr=(0.05,0.05),sc=(0.28,0.28),pd=(-0.15,-0.2),brd=Nothing}
     stack 0 (1,1) osStk (toList os) drawWith
     
-    let psStk = Info{parent=g,tr=(0.02,0.5),sc=(0.43,0.43),pd=(0.05,0.0),brd=Nothing}
+    let psStk = dflt{parent=g,tr=(0.02,0.5),sc=(0.43,0.43),pd=(0.05,0.0),brd=Nothing}
     stack 0 (1,0) psStk (toList ps) drawWith
     
     return g
@@ -226,7 +235,7 @@ instance Draw a => Draw (Space a) where
     return g
 ;
 
--- nestMap :: (Ord ka, Ord kb) => M.Map (ka,kb) a -> M.Map kb (M.Map ka a)
+nestMap :: (Ord ka, Ord kb) => M.Map (ka,kb) a -> M.Map kb (M.Map ka a)
 nestMap = M.foldlWithKey' f M.empty where
   f m (x,y) a
     | y == y    = M.insertWith M.union y (M.singleton x a) m {- todo -}
@@ -235,10 +244,32 @@ nestMap = M.foldlWithKey' f M.empty where
 {- todo: generate color coding of player names.
 more easily recognized in game.-}
 
+instance Draw (PhyObj,PhyObjT) where
+  draw Info{t0,t,t1} (_o,_ot) = undefined
+;
+
+instance Draw EnvT where
+  draw _info _envt = return undefined
+;
+
+instance Draw PlayerAction where
+  draw _info _pa = return undefined
+;
+
+instance Draw PlayerT where
+  draw _info _pt = return undefined
+;
+
+instance Draw BlockTr where
+  draw _info _bct = return undefined
+
+instance Draw ConsHistory where
+  draw info _ch = newSVGElem "g" `under` parent info {- todo -}
+
 {-
 class DrawT a where
   drawt :: a -> Info -> Double -> IO Elem
-  {- draw the frame at time t (in {0..1}) of the object -}
+  x
 ;
 
 -}

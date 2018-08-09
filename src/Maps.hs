@@ -4,10 +4,9 @@
 module Maps
   where
 
-import Base
-import View
+import BaseBlock
 import GameState
-import qualified Data.Set as S
+import View (fromString)
 import qualified Data.Map as M
 import qualified Data.MultiSet as MS
 
@@ -19,15 +18,6 @@ mkPwith eo ls = Player "P" eo (MS.fromList ls)
 
 one (act,p) = MS.singleton (p,act,p)
 oneO (mot,o) = M.singleton o (MS.singleton mot)
-
-noAction :: (Functor f, Functor g) => f (g BlockSt) -> f (g BlockTr)
-noAction = fmap (fmap f)
-  where f (BC ps os env) = BCT {
-       bctenv = (env,EnvStays,env)
-      ,bctos = M.fromListWith MS.union $ map (,MS.singleton NoMotionT) $ MS.toList os
-      ,bctps = MS.map (\p -> (p,Completed NoAction,p)) ps
-    }
-;
 
 map1_P0 = Specific 0 (mkP True) (7,'D') $ fromString
     ".P., ,_, , ,ta1 ta0, D00, \n\
@@ -49,9 +39,9 @@ map2_P0_t0 = Specific 0 (mkP True) (7,'D') $ fromString
     \  S,S,    S,S,S,  S,   S,S"
 
 map2_P0_t0T =
-  fmap (M.insert (0,'A')   $ BCT (Blank,EnvStays,Blank) M.empty (one . (Initiated    MoveR,) $ mkP True))
-  . fmap (M.insert (1,'A') $ BCT (Blank,EnvStays,Blank) M.empty (one . (Motion L D        ,) $ mkP True))
-  . fmap (M.insert (1,'B') $ BCT (Blank,EnvStays,Blank) M.empty (one . (CompletedFalling  ,) $ mkP True))
+  fmap (M.insert (0,'A')   $ BCT (Blank,EnvStays,Blank) MS.empty (one . (Initiated    MoveR,) $ mkP True))
+  . fmap (M.insert (1,'A') $ BCT (Blank,EnvStays,Blank) MS.empty (one . (Motion L D        ,) $ mkP True))
+  . fmap (M.insert (1,'B') $ BCT (Blank,EnvStays,Blank) MS.empty (one . (CompletedFalling  ,) $ mkP True))
   $ noAction map2_P0_t0
 
 map2_P0_t1 = Specific 1 (mkP True) (7,'D') $ fromString
@@ -62,9 +52,9 @@ map2_P0_t1 = Specific 1 (mkP True) (7,'D') $ fromString
 ;
 
 map2_P0_t1T = 
-  fmap (M.insert (1,'B')   $ BCT (Blank,EnvStays,Blank) M.empty  (one (Initiated  JumpUR,mkP True)))
-  . fmap (M.insert (1,'A') $ BCT (Blank,EnvStays,Blank) M.empty  (one (Motion D R       ,mkP True)))
-  . fmap (M.insert (2,'A') $ BCT (Platform,EnvStays,Platform) (oneO (NoMotionT,TOrb 'a' 1)) (one (Completed  JumpUR,mkP True)))
+  fmap (M.insert (1,'B')   $ BCT (Blank,EnvStays,Blank) MS.empty  (one (Initiated  JumpUR,mkP True)))
+  . fmap (M.insert (1,'A') $ BCT (Blank,EnvStays,Blank) MS.empty  (one (Motion D R       ,mkP True)))
+  . fmap (M.insert (2,'A') $ BCT (Platform,EnvStays,Platform) (one (NoMotionT,TOrb 'a' 1)) (one (Completed  JumpUR,mkP True)))
   $ noAction map2_P0_t1
 
 map2_P0_t2 = Specific 2 (mkP True) (7,'D') $ fromString
@@ -76,8 +66,8 @@ map2_P0_t2 = Specific 2 (mkP True) (7,'D') $ fromString
 
 mytp = Teleport {tpch = 'a', tpobjs = (MS.singleton (mkP True),MS.empty), tpsource = (2,(2,'A')), tpdest = (3,(5,'A'))} 
 map2_P0_t2T = 
-  fmap (M.insert (2,'A')   $ BCT (Platform,EnvStays,Platform) (oneO (TPsend,TOrb 'a' 1))  (one (Initiated  mytp,mkP True)))
-  . fmap (M.insert (5,'A') $ BCT (Blank,EnvStays,Blank)       (oneO (TPget,TOrb 'a' 0)) (one (Completed  mytp,mkP True)))
+  fmap (M.insert (2,'A')   $ BCT (Platform,EnvStays,Platform) (one (TPsend,TOrb 'a' 1))  (one (Initiated  mytp,mkP True)))
+  . fmap (M.insert (5,'A') $ BCT (Blank,EnvStays,Blank)       (one (TPget,TOrb 'a' 0)) (one (Completed  mytp,mkP True)))
   $ noAction map2_P0_t2
 
 map2_P0_t3 = Specific 3 (mkP True) (7,'D') $ fromString
@@ -87,8 +77,8 @@ map2_P0_t3 = Specific 3 (mkP True) (7,'D') $ fromString
     \S,S,S,S,S,  S,   S,S"
 ;
 map2_P0_t3T =
-  fmap (M.insert (5,'A')   $ BCT (Blank,EnvStays,Blank) M.empty (one (Initiated MoveR,mkP True)))
-  . fmap (M.insert (6,'A') $ BCT (Door 0 0,EnvStays,Door 0 0) M.empty (one (Completed MoveR,mkP True)))
+  fmap (M.insert (5,'A')   $ BCT (Blank,EnvStays,Blank) MS.empty (one (Initiated MoveR,mkP True)))
+  . fmap (M.insert (6,'A') $ BCT (Door 0 0,EnvStays,Door 0 0) MS.empty (one (Completed MoveR,mkP True)))
   $ noAction map2_P0_t3
 
 map2_P0_t4 = Specific 4 (mkP True) (7,'D') $ fromString
@@ -99,11 +89,11 @@ map2_P0_t4 = Specific 4 (mkP True) (7,'D') $ fromString
 ;
 
 map2_P0_t4T =
-  fmap (M.insert (6,'A') $ BCT (Door 0 0,EnvStays,Door 0 0) M.empty (one (Completed (UseEnvMult [TraverseDoor]),mkP True)))
+  fmap (M.insert (6,'A') $ BCT (Door 0 0,EnvStays,Door 0 0) MS.empty (one (Completed (UseEnvMult [TraverseDoor]),mkP True)))
   $ noAction map2_P0_t4
 
 map2_initGS :: GameState
-map2_initGS = either (error . ("map2_initGS: "++) . head) id $ initGS (S.singleton map2_P0_t0)
+map2_initGS = either (error . ("map2_initGS: "++) . head) id $ initGS (MS.singleton map2_P0_t0)
 
 map2_GS :: GameState
 map2_GS =
@@ -113,7 +103,7 @@ map2_GS =
              (2,(f map2_P0_t2,f map2_P0_t2T)),
              (3,(f map2_P0_t3,f map2_P0_t3T)),
              (4,(f map2_P0_t4,f map2_P0_t4T))])
-      f = S.singleton
+      f = MS.singleton
   in  either (error . ("map2_GS: "++) . head) id $ mkGSfromObs obs
 
 main :: IO ()
@@ -129,7 +119,7 @@ main = do
   print map2_GS
   
   putStrLn "\nWith Contradictions:"
-  mapM_ putStrLn . contradictions $ gsch map2_GS
+  mapM_ print . contradictions $ gsch map2_GS
   
   -- putStrLn "Minimal GameState:" >> print map2_initGS
 ;
