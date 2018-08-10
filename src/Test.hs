@@ -17,6 +17,18 @@ import Data.Char (toUpper)
 htests = TestList []
 
 
+{- TODO:
+use equalities for Partial a where.
+
+. merge is associative:
+    merge a b >>= flip merge c == merge b c >>= merge  a
+. merge is commutative:
+    merge a b = merge b a
+. concretizing a partial view of an object is id:
+    Just x = (concrete . toPartial) x
+. a `merge` b == Just x ==> isJust (merge a x)
+-}
+
 instance Arbitrary Dir where
   arbitrary = elements [L,U,R,D]
 ;

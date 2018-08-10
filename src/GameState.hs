@@ -20,6 +20,7 @@ import qualified Data.MultiSet as MS
 import Data.Foldable
 import Control.Monad (foldM)
 import Control.Arrow (first,second,(***))
+import Data.Maybe (mapMaybe)
 
 -- import Debug.Trace
 
@@ -136,6 +137,7 @@ failPlayerObsOutOfBounds tpos ch = failing $ "applyPW[unusual]: players observat
 
 
 -- returns the set of contradiction descriptions currently in the ConsHistory
+{- only returns local contradictions -}
 contradictions :: ConsHistory -> [ConsDesc]
 contradictions ch = {- we assume that out-of-bounds is a problem. -}
   do let (maxT,(maxX,maxY)) = chsize ch
@@ -154,11 +156,13 @@ contradictions ch = {- we assume that out-of-bounds is a problem. -}
 {- checks the constraints for a single block. returns contradictions -}
 runChecks :: Block b => TimePos -> b -> ConsHistory -> [ConsDesc]
 runChecks curr b ch = 
-  let chp    = asPartialCH ch
+  let chp    = toPartial ch
       ress   = runSTCons chp (allBlockConstraints curr b)
-      collect xs = if all (isNothing.fst) xs then snd <$> xs else []
-      isNothing = maybe True (const False)
-  in  collect ress
+      {- for all successful partial constraints,
+      check whether ch satisfies it-}
+      mbools = mapMaybe (\(mc,d) -> (,d) <$> (ch `satisfies`) <$> mc) $ ress
+      {- we have a contradiction, iff all partial ch' contradict with ch. -}
+  in  if all fst mbools then snd <$> mbools else []
 ;
 
 atCHSt :: TimePos -> a {- out of bounds -} -> (Maybe BlockSt -> a) -> ConsHistory -> a

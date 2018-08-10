@@ -188,7 +188,7 @@ instance Draw Player where
 ;
 
 instance Draw BlockSt where
-  draw info (BC ps os e) = do
+  draw info (BC e os ps) = do
     g <- newSVGElem "g" `under` parent info
     
     _ <- drawWith e dflt{parent=g,tr=(0.5,0),sc=(0.5,0.5),pd=(0,0),brd=Nothing}

@@ -11,7 +11,6 @@ module Interference(
     ,inferMinimal
     ,inferMinimalT
     ,runSTCons
-    ,asPartialCH
     ,adjustGlobalInfo
     
     ,This(..)
@@ -28,7 +27,7 @@ import ViewBase(enclosing,dot)
 import qualified Data.Map as M
 import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MS
-import Control.Arrow (second)
+import Control.Arrow (second,(***))
 -- import Debug.Trace
 -- import Control.Applicative
 
@@ -36,9 +35,9 @@ instance Block BlockSt where
   type OpenObs BlockSt = Specific (Space BlockSt)
   type ClosedObs BlockSt = Specific (Pos,BlockSt)
   data Cons BlockSt = BCC {
-       bccps  :: MultiSet Player
+       bccenv :: Maybe Env
       ,bccos  :: MultiSet PhyObj
-      ,bccenv :: Maybe Env
+      ,bccps  :: MultiSet Player
     } deriving (Ord,Eq)
     -- OneP Player | OneO PhyObj | Bgrd Env
     -- => e.g. OneP p1 & OneP p1 & OneP p2 & Bgrd (Door 0 0) <=>
@@ -48,7 +47,7 @@ instance Block BlockSt where
   this = St
   getter St = fst
   setter St cb = (cb,leastc)
-  leastc = BCC MS.empty MS.empty Nothing
+  leastc = BCC{bccps=MS.empty,bccos=MS.empty,bccenv=Nothing}
   
   on_standable ths tpos = mkSTConsFromChoice ths tpos ((\x->leastc{bccenv=x}) <$> envOnStandables)
   in_standable ths tpos = mkSTConsFromChoice ths tpos ((\x->leastc{bccenv=x}) <$> envInStandables)
@@ -71,15 +70,15 @@ instance Block BlockTr where
   data Cons BlockTr =
       BCTC {
         bctcenv  :: (Maybe Env, Maybe EnvT, Maybe Env)
-       ,bctcps :: MultiSet (Maybe Player,Maybe PlayerT,Maybe Player)
        ,bctcos :: MultiSet (Maybe PhyObj,Maybe PhyObjT,Maybe PhyObj)
+       ,bctcps :: MultiSet (Maybe Player,Maybe PlayerT,Maybe Player)
     } deriving (Eq,Ord)
   type Antcpt BlockTr = Space (Maybe BlockTr)
   data This BlockTr = Tr
   this = Tr
   getter Tr = snd
   setter Tr cb = (leastc,cb)
-  leastc = BCTC (Nothing,Nothing,Nothing) MS.empty MS.empty
+  leastc = BCTC{bctcenv=(Nothing,Nothing,Nothing),bctcos=MS.empty,bctcps=MS.empty}
   
   on_standable ths tpos = mkSTConsFromChoice ths tpos $ 
     (\l t r -> leastc{bctcenv=(l,t,r)}) <$> envOnStandables <*> envOnStandablesT <*> envOnStandables
@@ -112,8 +111,6 @@ deriving instance Data PlayerAction
 deriving instance Typeable PlayerAction
 deriving instance Data Teleport
 deriving instance Typeable Teleport
-deriving instance Data a => Data (Partial a)
-deriving instance Typeable a => Typeable (Partial a)
 deriving instance Data PlayerT
 deriving instance Typeable PlayerT
 deriving instance Data ConsHistory
@@ -138,11 +135,11 @@ mkSTConsFromChoice :: Block b => This b -> TimePos -> [Cons b] -> ConsDesc -> ST
 mkSTConsFromChoice ths tpos bcs str = eAny $ 
     do bc <- bcs
        let mp = M.singleton tpos $ setter ths bc
-       return $ eLeaf ((mp,unknownGlobalP),str)
+       return $ eLeaf (CHP mp unknownGlobalP,str)
 
 mkSimpleSTConsWithGlobal :: Block b => This b -> TimePos -> CH_GlobalP -> Cons b -> ConsDesc -> STCons
 mkSimpleSTConsWithGlobal ths tpos cchg cb str =
-  eLeaf ((M.singleton tpos (setter ths cb),cchg),str)
+  eLeaf (CHP (M.singleton tpos (setter ths cb)) cchg,str)
 
 mkSimpleSTCons :: Block b => This b -> TimePos -> Cons b -> ConsDesc -> STCons
 mkSimpleSTCons ths tpos cb str = mkSimpleSTConsWithGlobal ths tpos unknownGlobalP cb str
@@ -170,7 +167,7 @@ concretec = todo
 -}
 
 okc :: (ConsHistoryP,ConsDesc)
-okc = ((M.empty,unknownGlobalP),"ok")
+okc = (CHP M.empty unknownGlobalP,"ok")
 
 alwaysOk :: STCons
 alwaysOk = eLeaf okc
@@ -230,7 +227,7 @@ runSTCons :: ConsHistoryP -> STCons -> [ConsRes]
 runSTCons chp0 stcons = foldExpr leaf allExpr anyExpr stcons $ chp0
   where
     {- apply constraint x. create singleton branch -}
-    leaf x chp = [applyCons x chp]    :: [ConsRes]
+    leaf (chp,desc) chp' = [(chp `merge` chp',desc)]    :: [ConsRes]
     
     {- fold through conjunction. try all alternatives, that arise. -}
     allExpr fs chp =
@@ -253,63 +250,94 @@ runSTCons chp0 stcons = foldExpr leaf allExpr anyExpr stcons $ chp0
     anyExpr fs chp = fs >>= ($chp) -- didnt expect this impl. to be that short...
 ;
 
-
 --listFailReferenceOutOfBounds :: TimePos -> TimePos -> ConsRes
 --listFailReferenceOutOfBounds curr other = maybeLeft $ show curr ++ " references out-of-bounds "++show other
 
-applyCons :: (ConsHistoryP,ConsDesc) -> ConsHistoryP -> (Maybe ConsHistoryP,ConsDesc)
-applyCons (chp,desc) chp' = (chp `merge` chp',desc)
-;
-
-{- elements which support conjunctive merging. -}
-class Merge a where
+{- elements which support conjunctive merging and partial description. -}
+class Partial a where
   merge :: a -> a -> Maybe a
+  {- ASSOCIATIVE -}
+  
+  type Concrete a :: *
+  type Concrete a = a
+  toPartial :: Concrete a -> a
+  {- INJECTIVE: a /= b -> toPartial a /= toPartial b  -}
 ;
 
 defaultMerge :: Eq a => a -> a -> Maybe a
 defaultMerge a b = if a == b then Just a else Nothing
 
-instance Merge (Cons BlockSt) where
+instance Partial ConsHistoryP where
+  merge (CHP st1 gl1) (CHP st2 gl2) = uncurry CHP <$> (st1,gl1) `merge` (st2,gl2)
+  type Concrete ConsHistoryP = ConsHistory
+  toPartial CH{chspace,chglobal} =
+    CHP 
+      (M.map (mblk2partial *** mblk2partial) $ flatten chspace)
+      (toPartial chglobal)
+    where
+      mblk2partial :: (Block b,Partial (Cons b)) => Maybe (Concrete (Cons b)) -> Cons b
+      mblk2partial = maybe leastc toPartial
+;
+
+instance Partial (Cons BlockSt) where
   merge b1 b2 = BCC
-    <$> bccps  b1 `merge` bccps  b2
+    <$> bccenv b1 `merge` bccenv b2
     <*> bccos  b1 `merge` bccos  b2
-    <*> bccenv b1 `merge` bccenv b2
+    <*> bccps  b1 `merge` bccps  b2
+  type Concrete (Cons BlockSt) = BlockSt
+  toPartial BC{bcps,bcos,bcenv} =
+    BCC (toPartial bcenv) (toPartial bcos) (toPartial bcps)
 ;
 
-instance Merge (Cons BlockTr) where
-  merge = todo
+instance Partial (Cons BlockTr) where
+  merge b1 b2 = BCTC
+    <$> bctcenv b1 `merge` bctcenv b2
+    <*> bctcos  b1 `merge` bctcos  b2
+    <*> bctcps  b1 `merge` bctcps  b2
+  type Concrete (Cons BlockTr) = BlockTr
+  toPartial BCT{bctps,bctos,bctenv} =
+    BCTC (toPartial bctenv) (toPartial bctos) (toPartial bctps)
 ;
 
-{- outer Maybe represents merge success/failure.
-inner maybe represents knowning-ness of value. -}
-instance Merge a => Merge (Maybe a) where
+instance Partial a => Partial (Maybe a) where
+  {- outer Maybe represents merge success/failure.
+  inner maybe (of type a) represents knowning-ness of value -}
   merge Nothing mb = Just mb
   merge ma Nothing = Just ma
   merge (Just a) (Just b) = Just <$> merge a b
+  type Concrete (Maybe a) = Concrete a
+  toPartial = Just . toPartial
 ;
-instance (Merge a, Merge b) => Merge (a,b) where
+instance (Partial a, Partial b) => Partial (a,b) where
   merge (a1,b1) (a2,b2) = (,) <$> a1 `merge` a2 <*> b1 `merge` b2
+  type Concrete (a,b) = (Concrete a,Concrete b)
+  toPartial (a,b) = (toPartial a,toPartial b)
 ;
 
-instance (Merge a, Merge b, Merge c) => Merge (a,b,c) where
+instance (Partial a, Partial b, Partial c) => Partial (a,b,c) where
   merge (a1,b1,c1) (a2,b2,c2) = (,,) <$> a1 `merge` a2 <*> b1 `merge` b2 <*> c1 `merge` c2
+  type Concrete (a,b,c) = (Concrete a,Concrete b,Concrete c)
+  toPartial (a,b,c) = (toPartial a,toPartial b, toPartial c)
 ;
 
 {- merge elements with same key. fail, if any single merge fails -}
-instance (Ord k, Merge a) => Merge (M.Map k a) where
+instance (Ord k, Partial a) => Partial (M.Map k a) where
   merge ma = M.traverseWithKey
-    (\k a -> maybe (Just a) (merge a) $ M.lookup k ma) 
+    (\k a -> maybe (Just a) (merge a) $ M.lookup k ma)
+  type Concrete (M.Map k a) = M.Map k (Concrete a)
+  toPartial = M.map toPartial
 ;
 
-instance Merge PhyObj     where merge = defaultMerge
-instance Merge Dir        where merge = defaultMerge
-instance Merge Env        where merge = defaultMerge
-instance Merge Player     where merge = defaultMerge
-instance Merge PhyObjT    where merge = defaultMerge
-instance Merge EnvT       where merge = defaultMerge
-instance Merge EAOnce     where merge = defaultMerge
-instance Merge EARep      where merge = defaultMerge
-instance Merge Teleport   where merge = defaultMerge
+instance Partial PhyObj     where merge = defaultMerge; toPartial = id
+instance Partial Dir        where merge = defaultMerge; toPartial = id
+instance Partial Env        where merge = defaultMerge; toPartial = id
+instance Partial Player     where merge = defaultMerge; toPartial = id
+instance Partial PlayerT    where merge = defaultMerge; toPartial = id
+instance Partial PhyObjT    where merge = defaultMerge; toPartial = id
+instance Partial EnvT       where merge = defaultMerge; toPartial = id
+instance Partial EAOnce     where merge = defaultMerge; toPartial = id
+instance Partial EARep      where merge = defaultMerge; toPartial = id
+instance Partial Teleport   where merge = defaultMerge; toPartial = id
 
 {- elements of a multiset are not recursively merged.
   otherwise {(j 1,n,n)} `merge` {(n,j 2,n)} `merge` {(j 3,n,n)}
@@ -322,19 +350,17 @@ instance Merge Teleport   where merge = defaultMerge
   Also, merging elements may decrease their multiplicity, which
   is undesireable. (as couting equal objects is not possible now anymore.)
 -}
-instance Ord a => Merge (MultiSet a) where merge = Just `dot` MS.union
+instance (Ord a,Partial a) => Partial (MultiSet a) where
+  merge = Just `dot` MS.union
+  type Concrete (MultiSet a) = MultiSet (Concrete a)
+  toPartial = MS.map toPartial
 
 {- a variant of multiset-merge where each element is also merged
 newtype FullMerge a = FullMerge {getFullMerge :: a}
-instance Merge a => Merge (FullMerge (MultiSet a)) where
+instance Partial a => Partial (FullMerge (MultiSet a)) where
 ;
 -}
-
--- instance Merge CH_Global -- redundant because it's a special case of Map k a
-
-asPartialCH :: ConsHistory -> ConsHistoryP
-asPartialCH = todo
-{- turns a consistency history to a partial view of it. -}
+-- instance Partial CH_Global -- redundant because it's a special case of Map k a
 
 flatten :: Timed (Space a) -> M.Map TimePos a
 flatten mp = M.fromAscList (M.toAscList mp >>= \(t,mpi) -> M.toAscList mpi >>= \(pos,x) -> [((t,pos),x)])

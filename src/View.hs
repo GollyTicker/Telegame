@@ -27,7 +27,7 @@ toStringMultiSet3 :: (Show a, Show b) => MultiSet (a,b,a) -> [String]
 toStringMultiSet3 = map (\(a,b,a') -> show a ++" "++show b++" "++show a') . MS.toList
 
 instance Show BlockSt where
-  show (BC ps os e) = 
+  show (BC e os ps) = 
     let firstHalf = intercalate " " $ toStrings ps ++ toStrings os
         finalStr = if null (show e) || null firstHalf
                 then firstHalf ++ show e
@@ -133,7 +133,7 @@ fromNestedList =
   where f y x s = ((x,y),read s)
 
 instance Read BlockSt where
-  readsPrec _ "" = [(BC MS.empty MS.empty Blank,"")]
+  readsPrec _ "" = [(BC Blank MS.empty MS.empty,"")]
   readsPrec n str =
     let ws = words str
         e = case safeLast ws of
@@ -143,7 +143,7 @@ instance Read BlockSt where
                           ((env,_):_) -> env
         ps = MS.fromList . map fst . concatMap (readsPrec n) $ ws
         os = MS.fromList . map fst . concatMap (readsPrec n) $ ws
-    in  [(BC ps os e,"")]
+    in  [(BC e os ps,"")]
 ;
 
 showFld :: (Foldable t,Show a) => t a -> String

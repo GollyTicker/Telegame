@@ -28,8 +28,7 @@ module BaseBlock (
     ,ConsHistory(..)
     ,ConsDesc
     ,STCons
-    ,ConsHistoryP
-    ,Partial(..)
+    ,ConsHistoryP(..)
     ,Expr,eLeaf,eAll,eAny
     ,foldExpr
     ,ConsRes
@@ -73,7 +72,11 @@ class (Show (This a),Typeable a) => Block a where
 ;
 
 {- contents of a state block. multiset, because the same obj/plyr can occur identically many times -}
-data BlockSt = BC { bcps :: MultiSet Player, bcos :: MultiSet PhyObj, bcenv :: Env }
+data BlockSt = BC {
+    bcenv :: Env,
+    bcos :: MultiSet PhyObj,
+    bcps :: MultiSet Player
+  }
   deriving (Eq,Ord)
 ;
 data BlockTr = BCT {
@@ -264,8 +267,10 @@ type STCons = Expr (ConsHistoryP,ConsDesc)
 {- type denoting partial constructive constraints on history.
 constraint on CH_Global, on space-time blocks and it's reason
 for being there. -}
-type ConsHistoryP = (M.Map TimePos (Cons BlockSt, Cons BlockTr),CH_GlobalP)
-newtype Partial a = Partial {getPartial :: a} deriving (Show, Eq)
+data ConsHistoryP = CHP {
+     chpst :: M.Map TimePos (Cons BlockSt, Cons BlockTr)
+    ,chpglobal :: CH_GlobalP
+  }
 {-
   bool = True => all information in block is fully defined. it can now lead to contradictions.
   bool = False => we have not provided all information, so constrainty may be
@@ -312,10 +317,10 @@ data PlayerInput =
 -- transition and state assuming, that nothing happens
 noActionSucc :: BlockSt -> (BlockTr,BlockSt)
 noActionSucc x = let xtr = f x in (xtr, g xtr)
-  where f (BC ps os env) = BCT {
-       bctenv = (env,EnvStays,env)
-      ,bctos = MS.map (\o -> (o,NoMotionT,o)) os
-      ,bctps = MS.map (\p -> (p,Completed NoAction,p)) ps
+  where f BC{bcps,bcos,bcenv}= BCT {
+       bctenv = (bcenv,EnvStays,bcenv)
+      ,bctos = MS.map (\o -> (o,NoMotionT,o)) bcos
+      ,bctps = MS.map (\p -> (p,Completed NoAction,p)) bcps
     }
         g BCT{bctenv,bctos,bctps} = BC{
        bcenv = thd3 bctenv
