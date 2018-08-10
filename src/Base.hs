@@ -18,6 +18,7 @@ module Base(
     ,EnvT(..)
     ,Player(..)
     ,PlayerAction(..)
+    ,Teleport(..)
     ,runpa
     ,toDirpa
     ,fromDirpa
@@ -131,10 +132,10 @@ data PhyObjT = NoMotionT | MotionT Dir Dir
   | LandFrom Dir -- land from throws. Dir is L, R or U
   | IntoInventory {- also counting Door or switch -}
   | OntoGround {- also from switch or door -}
-  | TParrive Char | TPexit Char -- when objects lying on ground are sent though tp.
+  | TParrive Teleport | TPexit Teleport -- when objects lying on ground are sent though tp.
   | TPsend | TPget -- teleorbs, when they are on ground, have TPsend for the
   -- source and TPget for the destination orb. both get destroyed then.
-  deriving (Eq,Ord,Data,Typeable)
+  deriving (Eq,Ord)
 
 data EnvT = EnvStays | EnvUsedOnce EAOnce | EnvUsedMult [EARep]
   deriving (Eq,Ord,Data,Typeable)
@@ -161,14 +162,19 @@ data PlayerAction =
   | UseEnvMult [EARep]
   -- multiple env. actions can be done at the same time.
   -- e.g. insert key and enter the door
-  | Teleport {
+  | TP Teleport
+  {- todo: add two actions, for when the player is sent through tunnel.
+    equivalent to TParrve and TPsend from PhyObjT. -}
+  deriving (Eq,Ord)
+;
+
+data Teleport = Teleport {
      tpch :: Char
     ,tpobjs :: (MultiSet Player, MultiSet PhyObj) -- teleorbs of channel at source/dest. are not sent
     ,tpsource :: TimePos -- tpos before start of teleportation.
     ,tpdest   :: TimePos -- tpos at finish of arrival. in case of normal space-tp: currTime+1
   }
   deriving (Eq,Ord)
-;
 
 -- in addition to player actions,
 -- during transition one can observe a few more things
@@ -196,7 +202,7 @@ runpa :: a -> a ->
          (Char -> a) ->
          (EAOnce -> a) ->
          ([EARep] -> a) ->
-         (Char -> (MultiSet Player,MultiSet PhyObj) -> TimePos -> TimePos -> a) ->
+         (Teleport -> a) ->
          PlayerAction -> a
 runpa ml mr ju jul jur na pk pt tl tr newto ueo uem tele pa =
   case pa of MoveL -> ml
@@ -212,17 +218,17 @@ runpa ml mr ju jul jur na pk pt tl tr newto ueo uem tele pa =
              NewTOs c -> newto c
              UseEnvOnce eao -> ueo eao
              UseEnvMult eam -> uem eam
-             Teleport ch os ts td -> tele ch os ts td
+             TP tp -> tele tp
 ;
 toDirpa :: PlayerAction -> Maybe Dir
 toDirpa = runpa (j L) (j R) (j U) (j U) (j U)
-          n (\_->n) (\_->n) (\_ _->n) (\_ _->n) (\_->n) (\_->n) (\_->n) (\_ _ _ _->n)
+          n (\_->n) (\_->n) (\_ _->n) (\_ _->n) (\_->n) (\_->n) (\_->n) (\_->n)
 
 ;
 -- called on a (Completed playerAction)
 fromDirpa :: PlayerAction -> Maybe Dir
 fromDirpa = runpa (j R) (j L) (j D) (j R) (j L)
-          n (\_->n) (\_->n) (\_ _->n) (\_ _->n) (\_->n) (\_->n) (\_->n) (\_ _ _ _->n)
+          n (\_->n) (\_->n) (\_ _->n) (\_ _->n) (\_->n) (\_->n) (\_->n) (\_->n)
 ;
 
 runpat :: (PlayerAction -> a) -> 
@@ -255,7 +261,7 @@ runPhyObjT :: a
   -> (Dir -> Dir -> a)
   -> (Dir -> a)
   -> a -> a
-  -> (Char -> a) -> (Char -> a)
+  -> (Teleport -> a) -> (Teleport -> a)
   -> a -> a
   -> PhyObjT -> a
 runPhyObjT nomot mot lf inv grd tparr tpext tpsnd tpget o = case o of
@@ -264,8 +270,8 @@ runPhyObjT nomot mot lf inv grd tparr tpext tpsnd tpget o = case o of
   LandFrom di      -> lf di
   IntoInventory    -> inv
   OntoGround       -> grd
-  TParrive c       -> tparr c
-  TPexit   c       -> tpext c
+  TParrive t       -> tparr t
+  TPexit   t       -> tpext t
   TPsend           -> tpsnd
   TPget            -> tpget
 ;

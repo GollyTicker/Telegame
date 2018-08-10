@@ -58,7 +58,7 @@ computeCHfromObs obs =
         blockContent = maximum' . MS.map (maxDestTimePT . snd3) . bctps
         maxDestTimePT pat =
           runpat maxDestTimePA (\_ _ -> -1) maxDestTimePA (-1) pat
-        maxDestTimePA (Teleport _ _ ts td) = fst ts `max` fst td
+        maxDestTimePA (TP (Teleport _ _ ts td)) = fst ts `max` fst td
         maxDestTimePA _ = -1
 ;
 

@@ -5,8 +5,8 @@
 
 module Interference(
      module BaseBlock
-    --,module Interference -- for ghci.
-    
+    ,module Interference -- for ghci.
+    {-
     ,allBlockConstraints
     ,inferMinimal
     ,inferMinimalT
@@ -16,7 +16,7 @@ module Interference(
     
     ,This(..)
     ,is_a
-    ,Cons(..)
+    ,Cons(..)-}
   )
   where
 
@@ -24,7 +24,7 @@ import BaseBlock
 import Semantics
 import Data.Data
 import Control.Monad (foldM)
-import ViewBase(enclosing)
+import ViewBase(enclosing,dot)
 import qualified Data.Map as M
 import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MS
@@ -104,10 +104,16 @@ allBlockConstraints :: Block b => TimePos -> b -> STCons
 allBlockConstraints curr b =
   selfconsistent b `also` interferesWithBlock curr b
 
+deriving instance Data PhyObjT
+deriving instance Typeable PhyObjT
 deriving instance Data Player
 deriving instance Typeable Player
 deriving instance Data PlayerAction
 deriving instance Typeable PlayerAction
+deriving instance Data Teleport
+deriving instance Typeable Teleport
+deriving instance Data a => Data (Partial a)
+deriving instance Typeable a => Typeable (Partial a)
 deriving instance Data PlayerT
 deriving instance Typeable PlayerT
 deriving instance Data ConsHistory
@@ -132,14 +138,14 @@ mkSTConsFromChoice :: Block b => This b -> TimePos -> [Cons b] -> ConsDesc -> ST
 mkSTConsFromChoice ths tpos bcs str = eAny $ 
     do bc <- bcs
        let mp = M.singleton tpos $ setter ths bc
-       return $ eLeaf ((mp,unknownGlobal),str)
+       return $ eLeaf ((mp,unknownGlobalP),str)
 
-mkSimpleSTConsWithGlobal :: Block b => This b -> TimePos -> CH_Global -> Cons b -> ConsDesc -> STCons
+mkSimpleSTConsWithGlobal :: Block b => This b -> TimePos -> CH_GlobalP -> Cons b -> ConsDesc -> STCons
 mkSimpleSTConsWithGlobal ths tpos cchg cb str =
   eLeaf ((M.singleton tpos (setter ths cb),cchg),str)
 
 mkSimpleSTCons :: Block b => This b -> TimePos -> Cons b -> ConsDesc -> STCons
-mkSimpleSTCons ths tpos cb str = mkSimpleSTConsWithGlobal ths tpos unknownGlobal cb str
+mkSimpleSTCons ths tpos cb str = mkSimpleSTConsWithGlobal ths tpos unknownGlobalP cb str
 
 {- y-axis is pointed downwards -}
 -- isGrounded ensures, that current position is on ground.
@@ -164,7 +170,7 @@ concretec = todo
 -}
 
 okc :: (ConsHistoryP,ConsDesc)
-okc = ((M.empty,unknownGlobal),"ok")
+okc = ((M.empty,unknownGlobalP),"ok")
 
 alwaysOk :: STCons
 alwaysOk = eLeaf okc
@@ -184,6 +190,8 @@ instance Monoid STCons where
   satisfy everything in right partial cons-history-}
 satisfies :: ConsHistory -> ConsHistoryP -> Bool
 satisfies = todo
+{- true iff, the multi-constraints can be seens as a special
+case of the concrete-history. -}
 
 concretize :: ConsHistoryP -> MayContra ConsHistory
 concretize = todo {- use inferMinimal(T) -}
@@ -250,7 +258,79 @@ runSTCons chp0 stcons = foldExpr leaf allExpr anyExpr stcons $ chp0
 --listFailReferenceOutOfBounds curr other = maybeLeft $ show curr ++ " references out-of-bounds "++show other
 
 applyCons :: (ConsHistoryP,ConsDesc) -> ConsHistoryP -> (Maybe ConsHistoryP,ConsDesc)
-applyCons {-((cmp,cgl),desc) (mp0,gl0)-} = todo
+applyCons (chp,desc) chp' = (chp `merge` chp',desc)
+;
+
+{- elements which support conjunctive merging. -}
+class Merge a where
+  merge :: a -> a -> Maybe a
+;
+
+defaultMerge :: Eq a => a -> a -> Maybe a
+defaultMerge a b = if a == b then Just a else Nothing
+
+instance Merge (Cons BlockSt) where
+  merge b1 b2 = BCC
+    <$> bccps  b1 `merge` bccps  b2
+    <*> bccos  b1 `merge` bccos  b2
+    <*> bccenv b1 `merge` bccenv b2
+;
+
+instance Merge (Cons BlockTr) where
+  merge = todo
+;
+
+{- outer Maybe represents merge success/failure.
+inner maybe represents knowning-ness of value. -}
+instance Merge a => Merge (Maybe a) where
+  merge Nothing mb = Just mb
+  merge ma Nothing = Just ma
+  merge (Just a) (Just b) = Just <$> merge a b
+;
+instance (Merge a, Merge b) => Merge (a,b) where
+  merge (a1,b1) (a2,b2) = (,) <$> a1 `merge` a2 <*> b1 `merge` b2
+;
+
+instance (Merge a, Merge b, Merge c) => Merge (a,b,c) where
+  merge (a1,b1,c1) (a2,b2,c2) = (,,) <$> a1 `merge` a2 <*> b1 `merge` b2 <*> c1 `merge` c2
+;
+
+{- merge elements with same key. fail, if any single merge fails -}
+instance (Ord k, Merge a) => Merge (M.Map k a) where
+  merge ma = M.traverseWithKey
+    (\k a -> maybe (Just a) (merge a) $ M.lookup k ma) 
+;
+
+instance Merge PhyObj     where merge = defaultMerge
+instance Merge Dir        where merge = defaultMerge
+instance Merge Env        where merge = defaultMerge
+instance Merge Player     where merge = defaultMerge
+instance Merge PhyObjT    where merge = defaultMerge
+instance Merge EnvT       where merge = defaultMerge
+instance Merge EAOnce     where merge = defaultMerge
+instance Merge EARep      where merge = defaultMerge
+instance Merge Teleport   where merge = defaultMerge
+
+{- elements of a multiset are not recursively merged.
+  otherwise {(j 1,n,n)} `merge` {(n,j 2,n)} `merge` {(j 3,n,n)}
+  would become {(j 1,j 2,n),(j 3,n,n)} or
+  {(j 1,n,n),(j 3,j 2,n)} depending on associativity.
+  This is undesireable, because we don't know, which one of these
+  merges is correct. Imagine all of these tuples corresponding to a
+  key that appears twice in two different ways in the block.
+  Merge proactively, we would fix, which key is used with the action.
+  Also, merging elements may decrease their multiplicity, which
+  is undesireable. (as couting equal objects is not possible now anymore.)
+-}
+instance Ord a => Merge (MultiSet a) where merge = Just `dot` MS.union
+
+{- a variant of multiset-merge where each element is also merged
+newtype FullMerge a = FullMerge {getFullMerge :: a}
+instance Merge a => Merge (FullMerge (MultiSet a)) where
+;
+-}
+
+-- instance Merge CH_Global -- redundant because it's a special case of Map k a
 
 asPartialCH :: ConsHistory -> ConsHistoryP
 asPartialCH = todo
@@ -297,8 +377,9 @@ playerInterferesWithT curr p =
      `also` isPermeable Tr curr p
      {- todo: higher-prototype: check, what all these items do. -}
      `also` (case snd3 p of {- teleport cases: handled automatically by global check in self-consistency -}
-        Initiated _tp@(Teleport {}) -> alwaysOk 
-        Completed _tp@(Teleport {}) -> alwaysOk
+        Initiated (TP _) -> alwaysOk
+        Completed (TP _) -> alwaysOk
+          {- todo: handle TParrive and TPsend case, when player itself is sent. -}
         _ {- non-teleport cases -}  ->
           (if leavesPuzzle then alwaysOk else case movingNext of
               Nothing -> futureWith Tr St curr (thd3 p) leastc{bccps=MS.singleton (thd3 p)}
@@ -361,8 +442,8 @@ adjustGlobalInfo bct ch0 = foldM f ch0 (bctps bct) where
   insertable t ch = maybe True (t==) $ M.lookup (tpch t) (chglobal ch)
   inserttp   t ch = ch {chglobal = M.insert (tpch t) t (chglobal ch)}
   failStr    t ch = "Teleport observation "++show t++" contradicts established global-information " ++ show (chglobal ch)
-  f ch (_,Completed (tp@Teleport{}),_) = if insertable tp ch then success (inserttp tp ch) else failing $ failStr tp ch
-  f ch (_,Initiated (tp@Teleport{}),_) = if insertable tp ch then success (inserttp tp ch) else failing $ failStr tp ch
+  f ch (_,Completed (TP tp),_) = if insertable tp ch then success (inserttp tp ch) else failing $ failStr tp ch
+  f ch (_,Initiated (TP tp),_) = if insertable tp ch then success (inserttp tp ch) else failing $ failStr tp ch
   f ch _ = success ch
 ;
 

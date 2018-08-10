@@ -23,11 +23,13 @@ module BaseBlock (
     ,Field
     ,TeleportInfo
     ,CH_Global
-    ,unknownGlobal
+    ,CH_GlobalP
+    ,unknownGlobalP
     ,ConsHistory(..)
     ,ConsDesc
     ,STCons
     ,ConsHistoryP
+    ,Partial(..)
     ,Expr,eLeaf,eAll,eAny
     ,foldExpr
     ,ConsRes
@@ -163,9 +165,10 @@ data GameState = GS {
 type Field = (Maybe BlockSt, Maybe BlockTr)
 type TeleportInfo = PlayerAction {- only Teleport case allowed -}
 {- tpos before starting tp, teleorb-pair identifier, transfered objects, tpos after arrival -}
-type CH_Global = M.Map Char TeleportInfo -- no in map is eqivalient to unknown.
-unknownGlobal :: CH_Global
-unknownGlobal = M.empty
+type CH_Global = M.Map Char Teleport -- no in map is eqivalient to unknown.
+unknownGlobalP :: CH_GlobalP
+unknownGlobalP = M.empty
+type CH_GlobalP = M.Map Char ({-Partial-} Teleport)
 data ConsHistory =
   CH {
     chspace  :: Timed (Space Field)
@@ -187,6 +190,11 @@ data ConsHistory =
 
 {- =============== CONSTRAINT ============= -}
 {-
+
+TODO: invsertigate, whether it makes sense to replace ConsHistory
+  by ConsHistoryP. then we have a finer level of observations and uncertainity.
+  this fits to the lower comment of making player-obervations also more
+  fine-grained.
 
 Distinction:
 1. PlayerActions. each player action, applied on a CondHistory
@@ -256,7 +264,8 @@ type STCons = Expr (ConsHistoryP,ConsDesc)
 {- type denoting partial constructive constraints on history.
 constraint on CH_Global, on space-time blocks and it's reason
 for being there. -}
-type ConsHistoryP = (M.Map TimePos (Cons BlockSt, Cons BlockTr),CH_Global)
+type ConsHistoryP = (M.Map TimePos (Cons BlockSt, Cons BlockTr),CH_GlobalP)
+newtype Partial a = Partial {getPartial :: a} deriving (Show, Eq)
 {-
   bool = True => all information in block is fully defined. it can now lead to contradictions.
   bool = False => we have not provided all information, so constrainty may be

@@ -8,6 +8,7 @@ module ViewBase(
     ,toStrings
     ,safeLast
     ,enclosing
+    ,dot
   )
   where
 
@@ -15,7 +16,6 @@ import BaseBlock
 import Data.List (intercalate)
 import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MS
-
 
 instance Show Player where -- added . at beginning and end for easier parsing
   show (Player s {-age-} o inv) = "." ++ f (s {- ++ show age -}) ++ invStr ++ "."
@@ -78,10 +78,13 @@ instance Show PlayerAction where
   show  =
     runpa "<-" "->" "^" "^\\" "/^" "stay"
           (\o -> ("pick("++ show o++")")) (\o -> ("put("++ show o++")"))
-          (show `dot` ThrowL) (show `dot` ThrowR) (show . NewTOs) show show
-          (\ch (ps,os) ts td ->
-            concat ["tp[",show ch,"|",showTPosCompact ts,"->"++showTPosCompact td++"](",
-                        intercalate " " $ toStrings ps ++ toStrings os,")"])
+          (show `dot` ThrowL) (show `dot` ThrowR) (show . NewTOs) show show show
+;
+
+instance Show Teleport where
+  show (Teleport ch (ps,os) ts td) =
+    concat ["tp[",show ch,"|",showTPosCompact ts,"->"++showTPosCompact td++"](",
+      intercalate " " $ toStrings ps ++ toStrings os,")"]
 
 instance Show PlayerT where
   show = runpat (("Init "++). show) -- (("Inter "++). show)
