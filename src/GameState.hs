@@ -156,6 +156,7 @@ runChecks :: Block b => TimePos -> b -> ConsHistory -> [ConsDesc]
 runChecks curr b ch = 
   let chp    = asPartialCH ch
       ress   = runSTCons chp (allBlockConstraints curr b)
+      -- todo: use `satisfies` to check, whether the ch is consistent with the new chp.
       collect xs = if all (isNothing.fst) xs then snd <$> xs else []
       isNothing = maybe True (const False)
   in  collect ress
