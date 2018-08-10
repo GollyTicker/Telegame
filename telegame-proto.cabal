@@ -31,5 +31,6 @@ Test-Suite tests-basic
   build-depends:       base >= 4.7 && < 5,
                        containers,
                        QuickCheck,
+                       HUnit,
                        multiset >= 0.3.4 && < 1
   other-modules:       Base, BaseBlock, Semantics, ViewBase, Interference, GameState, View
