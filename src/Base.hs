@@ -37,6 +37,10 @@ module Base(
 Main todo:
 . add extensions: Safe, Trusworthy (fromWhat I wish I knew when learning haskell)
 . implement `runTurn` function
+. make code easier to understand.
+  . replace monolithic folds by composition of simpler specialized functions.
+    . e.g. filter p . map f rather than concatMap (when p . f)
+    => actually focus and build on COMPOSABILITY?
 . replace instances BlockSt/Tr by St/Tr. clearer view.
 . clean up and tidy and refactor
 . INTEGRATE stack into Haste. unified and reproduceable build

@@ -119,7 +119,9 @@ main = do
   print map2_GS
   
   putStrLn "\nWith Contradictions:"
-  mapM_ print . contradictions $ gsch map2_GS
+  let contras = contradictions $ gsch map2_GS
+  mapM_ (\x -> print x >> putStrLn "") contras
+  putStrLn $ "\n" ++ show (length contras) ++ " contradictions found."
   
   -- putStrLn "Minimal GameState:" >> print map2_initGS
 ;

@@ -268,7 +268,7 @@ type STCons = Expr (ConsHistoryP,ConsDesc)
 constraint on CH_Global, on space-time blocks and it's reason
 for being there. -}
 data ConsHistoryP = CHP {
-     chpst :: M.Map TimePos (Cons BlockSt, Cons BlockTr)
+     chpspace :: M.Map TimePos (Cons BlockSt, Cons BlockTr)
     ,chpglobal :: CH_GlobalP
   }
 {-

@@ -156,13 +156,13 @@ contradictions ch = {- we assume that out-of-bounds is a problem. -}
 {- checks the constraints for a single block. returns contradictions -}
 runChecks :: Block b => TimePos -> b -> ConsHistory -> [ConsDesc]
 runChecks curr b ch = 
-  let chp    = toPartial ch
+  let chp    = asPartialCH ch
       ress   = runSTCons chp (allBlockConstraints curr b)
       {- for all successful partial constraints,
       check whether ch satisfies it-}
       mbools = mapMaybe (\(mc,d) -> (,d) <$> (ch `satisfies`) <$> mc) $ ress
       {- we have a contradiction, iff all partial ch' contradict with ch. -}
-  in  if all fst mbools then snd <$> mbools else []
+  in  if all (not.fst) mbools then snd <$> mbools else []
 ;
 
 atCHSt :: TimePos -> a {- out of bounds -} -> (Maybe BlockSt -> a) -> ConsHistory -> a

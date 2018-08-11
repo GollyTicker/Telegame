@@ -20,13 +20,14 @@ htests = TestList []
 {- TODO:
 use equalities for Partial a where.
 
-. merge is associative:
-    merge a b >>= flip merge c == merge b c >>= merge  a
-. merge is commutative:
-    merge a b = merge b a
+. conjunct is associative:
+    conjunct a b >>= flip conjunct c == conjunct b c >>= conjunct a
+. conjunct is commutative:
+    conjunct a b = conjunct b a
 . concretizing a partial view of an object is id:
     Just x = (concrete . toPartial) x
-. a `merge` b == Just x ==> isJust (merge a x)
+. a `conjunct` b == Just x ==> isJust (merge a x)
+. toPartial injective: a /= b ==> toPartial a /= toPartial b
 -}
 
 instance Arbitrary Dir where

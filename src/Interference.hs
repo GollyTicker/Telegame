@@ -11,6 +11,7 @@ module Interference(
     ,inferMinimal
     ,inferMinimalT
     ,runSTCons
+    ,asPartialCH
     ,adjustGlobalInfo
     
     ,This(..)
@@ -183,12 +184,8 @@ instance Monoid STCons where
   mappend = also
 ;
 
-{- returns True iff all known blocks of left cons-history
-  satisfy everything in right partial cons-history-}
-satisfies :: ConsHistory -> ConsHistoryP -> Bool
-satisfies = todo
-{- true iff, the multi-constraints can be seens as a special
-case of the concrete-history. -}
+asPartialCH :: ConsHistory -> ConsHistoryP
+asPartialCH = toPartial
 
 concretize :: ConsHistoryP -> MayContra ConsHistory
 concretize = todo {- use inferMinimal(T) -}
@@ -227,7 +224,7 @@ runSTCons :: ConsHistoryP -> STCons -> [ConsRes]
 runSTCons chp0 stcons = foldExpr leaf allExpr anyExpr stcons $ chp0
   where
     {- apply constraint x. create singleton branch -}
-    leaf (chp,desc) chp' = [(chp `merge` chp',desc)]    :: [ConsRes]
+    leaf (chp,desc) chp' = [(chp `conjunct` chp',desc)]    :: [ConsRes]
     
     {- fold through conjunction. try all alternatives, that arise. -}
     allExpr fs chp =
@@ -255,92 +252,134 @@ runSTCons chp0 stcons = foldExpr leaf allExpr anyExpr stcons $ chp0
 
 {- elements which support conjunctive merging and partial description. -}
 class Partial a where
-  merge :: a -> a -> Maybe a
+  conjunct :: a -> a -> Maybe a
   {- ASSOCIATIVE -}
   
   type Concrete a :: *
   type Concrete a = a
   toPartial :: Concrete a -> a
   {- INJECTIVE: a /= b -> toPartial a /= toPartial b  -}
+  {- more laws in Test.hs -}
+  
+  {- how to make shrinking happen recursively? -}
+  -- shrink
+  -- narrower than
+  
+  {- counting not implemented -}
+  satisfies :: Concrete a -> a -> Bool
 ;
 
-defaultMerge :: Eq a => a -> a -> Maybe a
-defaultMerge a b = if a == b then Just a else Nothing
+{- returns True iff all known blocks of left cons-history
+  satisfy everything in right partial cons-history-}
+satisfiesCH :: ConsHistory -> ConsHistoryP -> Bool
+satisfiesCH = satisfies
+{- true iff, the multi-constraints can be seens as a special
+case of the concrete-history. -}
+
+defaultConjunct :: Eq a => a -> a -> Maybe a
+defaultConjunct a b = if a == b then Just a else Nothing
 
 instance Partial ConsHistoryP where
-  merge (CHP st1 gl1) (CHP st2 gl2) = uncurry CHP <$> (st1,gl1) `merge` (st2,gl2)
+  conjunct (CHP st1 gl1) (CHP st2 gl2) = uncurry CHP <$> (st1,gl1) `conjunct` (st2,gl2)
   type Concrete ConsHistoryP = ConsHistory
   toPartial CH{chspace,chglobal} =
-    CHP 
+    CHP
       (M.map (mblk2partial *** mblk2partial) $ flatten chspace)
       (toPartial chglobal)
     where
       mblk2partial :: (Block b,Partial (Cons b)) => Maybe (Concrete (Cons b)) -> Cons b
       mblk2partial = maybe leastc toPartial
+  satisfies CH{chspace,chglobal} CHP{chpspace,chpglobal} =
+    let mp = flatten chspace
+        blk bc = maybe (bc==leastc) (`satisfies` bc)
+    in  satisfies chglobal chpglobal
+        && (all (uncurry (&&))
+           . M.mapWithKey
+              (\k (bst,btr) -> maybe (False,False)
+                (blk bst *** blk btr)
+                $ M.lookup k mp)
+           $ chpspace)
 ;
 
+{- could use GHC.Generics here ... -}
 instance Partial (Cons BlockSt) where
-  merge b1 b2 = BCC
-    <$> bccenv b1 `merge` bccenv b2
-    <*> bccos  b1 `merge` bccos  b2
-    <*> bccps  b1 `merge` bccps  b2
+  conjunct b1 b2 = BCC
+    <$> bccenv b1 `conjunct` bccenv b2
+    <*> bccos  b1 `conjunct` bccos  b2
+    <*> bccps  b1 `conjunct` bccps  b2
   type Concrete (Cons BlockSt) = BlockSt
   toPartial BC{bcps,bcos,bcenv} =
     BCC (toPartial bcenv) (toPartial bcos) (toPartial bcps)
+  satisfies BC{bcps,bcos,bcenv} BCC{bccps,bccos,bccenv} =
+    and [satisfies bcps  bccps ,
+         satisfies bcos  bccos ,
+         satisfies bcenv bccenv]
 ;
 
 instance Partial (Cons BlockTr) where
-  merge b1 b2 = BCTC
-    <$> bctcenv b1 `merge` bctcenv b2
-    <*> bctcos  b1 `merge` bctcos  b2
-    <*> bctcps  b1 `merge` bctcps  b2
+  conjunct b1 b2 = BCTC
+    <$> bctcenv b1 `conjunct` bctcenv b2
+    <*> bctcos  b1 `conjunct` bctcos  b2
+    <*> bctcps  b1 `conjunct` bctcps  b2
   type Concrete (Cons BlockTr) = BlockTr
   toPartial BCT{bctps,bctos,bctenv} =
     BCTC (toPartial bctenv) (toPartial bctos) (toPartial bctps)
+  satisfies BCT{bctps,bctos,bctenv} BCTC{bctcps,bctcos,bctcenv} =
+    and [satisfies bctps  bctcps ,
+         satisfies bctos  bctcos ,
+         satisfies bctenv bctcenv]
 ;
 
+{- Partial instance for values that might not exist. -}
 instance Partial a => Partial (Maybe a) where
-  {- outer Maybe represents merge success/failure.
+  {- outer Maybe represents conjunct success/failure.
   inner maybe (of type a) represents knowning-ness of value -}
-  merge Nothing mb = Just mb
-  merge ma Nothing = Just ma
-  merge (Just a) (Just b) = Just <$> merge a b
+  conjunct Nothing mb = Just mb
+  conjunct ma Nothing = Just ma
+  conjunct (Just a) (Just b) = Just <$> conjunct a b
   type Concrete (Maybe a) = Concrete a
-  toPartial = Just . toPartial
+  toPartial = Just . toPartial {- result is just, because we know the value -}
+  satisfies ca = maybe True (satisfies ca)
 ;
 instance (Partial a, Partial b) => Partial (a,b) where
-  merge (a1,b1) (a2,b2) = (,) <$> a1 `merge` a2 <*> b1 `merge` b2
+  conjunct (a1,b1) (a2,b2) = (,) <$> a1 `conjunct` a2 <*> b1 `conjunct` b2
   type Concrete (a,b) = (Concrete a,Concrete b)
   toPartial (a,b) = (toPartial a,toPartial b)
+  satisfies (ca,cb) (a,b) = satisfies ca a && satisfies cb b
 ;
 
 instance (Partial a, Partial b, Partial c) => Partial (a,b,c) where
-  merge (a1,b1,c1) (a2,b2,c2) = (,,) <$> a1 `merge` a2 <*> b1 `merge` b2 <*> c1 `merge` c2
+  conjunct (a1,b1,c1) (a2,b2,c2) = (,,) <$> a1 `conjunct` a2 <*> b1 `conjunct` b2 <*> c1 `conjunct` c2
   type Concrete (a,b,c) = (Concrete a,Concrete b,Concrete c)
   toPartial (a,b,c) = (toPartial a,toPartial b, toPartial c)
+  satisfies (ca,cb,cc) (a,b,c) = satisfies ca a && satisfies cb b && satisfies cc c
 ;
 
-{- merge elements with same key. fail, if any single merge fails -}
 instance (Ord k, Partial a) => Partial (M.Map k a) where
-  merge ma = M.traverseWithKey
-    (\k a -> maybe (Just a) (merge a) $ M.lookup k ma)
+  {- conjunct elements with same key. fail, if any single conjunct fails -}
+  conjunct ma = M.traverseWithKey
+    (\k a -> maybe (Just a) (conjunct a) $ M.lookup k ma)
   type Concrete (M.Map k a) = M.Map k (Concrete a)
   toPartial = M.map toPartial
+  satisfies mca =
+    M.foldr (&&) True
+    . M.map (maybe False id)
+    . M.mapWithKey (\k a -> (`satisfies` a) <$> (M.lookup k mca) )
 ;
 
-instance Partial PhyObj     where merge = defaultMerge; toPartial = id
-instance Partial Dir        where merge = defaultMerge; toPartial = id
-instance Partial Env        where merge = defaultMerge; toPartial = id
-instance Partial Player     where merge = defaultMerge; toPartial = id
-instance Partial PlayerT    where merge = defaultMerge; toPartial = id
-instance Partial PhyObjT    where merge = defaultMerge; toPartial = id
-instance Partial EnvT       where merge = defaultMerge; toPartial = id
-instance Partial EAOnce     where merge = defaultMerge; toPartial = id
-instance Partial EARep      where merge = defaultMerge; toPartial = id
-instance Partial Teleport   where merge = defaultMerge; toPartial = id
+instance Partial PhyObj     where conjunct = defaultConjunct; toPartial = id; satisfies = (==) . toPartial
+instance Partial Dir        where conjunct = defaultConjunct; toPartial = id; satisfies = (==) . toPartial
+instance Partial Env        where conjunct = defaultConjunct; toPartial = id; satisfies = (==) . toPartial
+instance Partial Player     where conjunct = defaultConjunct; toPartial = id; satisfies = (==) . toPartial
+instance Partial PlayerT    where conjunct = defaultConjunct; toPartial = id; satisfies = (==) . toPartial
+instance Partial PhyObjT    where conjunct = defaultConjunct; toPartial = id; satisfies = (==) . toPartial
+instance Partial EnvT       where conjunct = defaultConjunct; toPartial = id; satisfies = (==) . toPartial
+instance Partial EAOnce     where conjunct = defaultConjunct; toPartial = id; satisfies = (==) . toPartial
+instance Partial EARep      where conjunct = defaultConjunct; toPartial = id; satisfies = (==) . toPartial
+instance Partial Teleport   where conjunct = defaultConjunct; toPartial = id; satisfies = (==) . toPartial
 
 {- elements of a multiset are not recursively merged.
-  otherwise {(j 1,n,n)} `merge` {(n,j 2,n)} `merge` {(j 3,n,n)}
+  otherwise {(j 1,n,n)} `conjunct` {(n,j 2,n)} `conjunct` {(j 3,n,n)}
   would become {(j 1,j 2,n),(j 3,n,n)} or
   {(j 1,n,n),(j 3,j 2,n)} depending on associativity.
   This is undesireable, because we don't know, which one of these
@@ -351,11 +390,13 @@ instance Partial Teleport   where merge = defaultMerge; toPartial = id
   is undesireable. (as couting equal objects is not possible now anymore.)
 -}
 instance (Ord a,Partial a) => Partial (MultiSet a) where
-  merge = Just `dot` MS.union
+  conjunct = Just `dot` MS.maxUnion
   type Concrete (MultiSet a) = MultiSet (Concrete a)
   toPartial = MS.map toPartial
+  satisfies mca = all (\a -> any (`satisfies` a) mca)
+;
 
-{- a variant of multiset-merge where each element is also merged
+{- a variant of multiset-conjunct where each element is also merged
 newtype FullMerge a = FullMerge {getFullMerge :: a}
 instance Partial a => Partial (FullMerge (MultiSet a)) where
 ;
@@ -465,12 +506,12 @@ envInterferesWith curr env =
 
 adjustGlobalInfo :: BlockTr -> ConsHistory -> MayContra ConsHistory
 adjustGlobalInfo bct ch0 = foldM f ch0 (bctps bct) where
-  insertable t ch = maybe True (t==) $ M.lookup (tpch t) (chglobal ch)
-  inserttp   t ch = ch {chglobal = M.insert (tpch t) t (chglobal ch)}
-  failStr    t ch = "Teleport observation "++show t++" contradicts established global-information " ++ show (chglobal ch)
   f ch (_,Completed (TP tp),_) = if insertable tp ch then success (inserttp tp ch) else failing $ failStr tp ch
   f ch (_,Initiated (TP tp),_) = if insertable tp ch then success (inserttp tp ch) else failing $ failStr tp ch
   f ch _ = success ch
+  insertable t ch = maybe True (t==) $ M.lookup (tpch t) (chglobal ch)
+  inserttp   t ch = ch {chglobal = M.insert (tpch t) t (chglobal ch)}
+  failStr    t ch = "Teleport observation "++show t++" contradicts established global-information " ++ show (chglobal ch)
 ;
 
 -- a function crucial for concreteHistory.
