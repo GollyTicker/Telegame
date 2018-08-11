@@ -66,7 +66,7 @@ class (Show (This a),Typeable a) => Block a where
   permeable :: This a -> TimePos -> ConsDesc -> STCons
   leastc :: Cons a
   selfconsistent :: a -> STCons
-  interferesWithBlock :: TimePos -> a -> STCons
+  blockConstraints :: TimePos -> a -> STCons
   reduceToClosed :: Proxy a -> OpenObs a -> ClosedObs a
   applypwObs :: Proxy a -> PWorld a -> (OpenObs a -> b) -> (ClosedObs a -> b) -> b
 ;

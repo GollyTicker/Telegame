@@ -7,11 +7,7 @@ module Interference(
      module BaseBlock
     ,module Interference -- for ghci.
     {-
-    ,allBlockConstraints
-    ,inferMinimal
-    ,inferMinimalT
-    ,runSTCons
-    ,asPartialCH
+    ,stConsContradictions
     ,adjustGlobalInfo
     
     ,This(..)
@@ -54,8 +50,7 @@ instance Block BlockSt where
   in_standable ths tpos = mkSTConsFromChoice ths tpos ((\x->leastc{bccenv=x}) <$> envInStandables)
   permeable    ths tpos = mkSTConsFromChoice ths tpos ((\x->leastc{bccenv=x}) <$> envPermeables  )
   
-  selfconsistent _ = alwaysOk -- TODO: implement. required counting ability => BC_Cons and BCT_Cons
-  interferesWithBlock = interferesWith
+  blockConstraints = blkConstraints
   
   -- find the block where the player is and reduce all to that block.
   {- todo: user interferences of player to reduce observations during closed eyes -}
@@ -90,8 +85,7 @@ instance Block BlockTr where
   permeable    ths tpos = mkSTConsFromChoice ths tpos $ 
     (\l t r -> leastc{bctcenv=(l,t,r)}) <$> envPermeables   <*> envPermeablesT   <*> envPermeables
   
-  selfconsistent _ = alwaysOk -- TODO: implement
-  interferesWithBlock = interferesWithT
+  blockConstraints = blkConstraintsT
   
   -- get all block where the player is identified
   {- todo: user interferences of player to reduce observations during closed eyes -}
@@ -99,10 +93,6 @@ instance Block BlockTr where
   
   applypwObs p@Proxy sobs fo fc = if peyes (splayer sobs) then fo sobs else fc (reduceToClosed p sobs)
 ;
-
-allBlockConstraints :: Block b => TimePos -> b -> STCons
-allBlockConstraints curr b =
-  selfconsistent b `also` interferesWithBlock curr b
 
 deriving instance Data PhyObjT
 deriving instance Typeable PhyObjT
@@ -188,7 +178,8 @@ asPartialCH :: ConsHistory -> ConsHistoryP
 asPartialCH = toPartial
 
 concretize :: ConsHistoryP -> MayContra ConsHistory
-concretize = todo {- use inferMinimal(T) -}
+concretize = todo {- use inferMinimal or simply concretize by simulation
+  with player inputs -}
 
 {- IMPORTANT FUNCTION:
   runs a space-time constraint on a partial constraint history.
@@ -245,6 +236,25 @@ runSTCons chp0 stcons = foldExpr leaf allExpr anyExpr stcons $ chp0
     
     {- apply disjunction. keep branches separate. -}
     anyExpr fs chp = fs >>= ($chp) -- didnt expect this impl. to be that short...
+;
+
+{- list of contradictions-}
+stConsContradictions :: ConsHistory -> STCons -> [ConsDesc]
+stConsContradictions ch stcons = foldExpr leaf allExpr anyExpr stcons
+  where
+    {- apply constraint x  -}
+    leaf (chp,desc) = if ch `satisfies` chp then [] else [desc]
+    
+    {- a conjunction of contradictions is simply the list of contradictions. -}
+    allExpr = concat
+    
+    {- apply disjunction. if there is am empty sub-list,
+    without contradictions, then take it. there is no contradiction there.
+    if every sub-list has at-least 1 contradiction,
+    then take the disjunction of them as the message. and this is done by sequence! -}
+    anyExpr =
+      map (\xs -> "Needs any one of: " ++ enclosing "{" "or" "}" xs)
+      . sequence
 ;
 
 --listFailReferenceOutOfBounds :: TimePos -> TimePos -> ConsRes
@@ -406,22 +416,29 @@ instance Partial a => Partial (FullMerge (MultiSet a)) where
 flatten :: Timed (Space a) -> M.Map TimePos a
 flatten mp = M.fromAscList (M.toAscList mp >>= \(t,mpi) -> M.toAscList mpi >>= \(pos,x) -> [((t,pos),x)])
 
-interferesWith :: TimePos -> BlockSt -> STCons
-interferesWith curr bc =
-  ( playerInterferesWith curr `foldMap` MS.toList (bcps bc))
-  `also` ( phyObjInterferesWith curr `foldMap` MS.toList (bcos bc))
-  `also` ( envInterferesWith curr (bcenv bc))
+blkConstraints :: TimePos -> BlockSt -> STCons
+blkConstraints curr bc =
+  ( playerConstraints curr `foldMap` MS.toList (bcps bc))
+  `also` ( phyObjConstraints curr `foldMap` MS.toList (bcos bc))
+  `also` ( envConstraints curr (bcenv bc))
 ;
 
-interferesWithT :: TimePos -> BlockTr -> STCons
-interferesWithT curr bct =
-  ( playerInterferesWithT curr `foldMap` MS.toList (bctps bct) )
-  `also` ( phyObjInterferesWithT curr `foldMap` MS.toList (bctos bct) )
-  `also` ( envInterferesWithT curr (bctenv bct))
+blkConstraintsT :: TimePos -> BlockTr -> STCons
+blkConstraintsT curr bct =
+  ( playerConstraintsT curr `foldMap` MS.toList (bctps bct) )
+  `also` ( phyObjConstraintsT curr `foldMap` MS.toList (bctos bct) )
+  `also` ( envConstraintsT curr (bctenv bct))
 ;
 
-playerInterferesWithT :: TimePos -> (Player,PlayerT,Player) -> STCons
-playerInterferesWithT curr p =
+globalConstraints :: ConsHistory -> STCons
+globalConstraints CH{chspace,chglobal} = mconcat $ map (uncurry mkTPcons) $ M.toList chglobal 
+  where mkTPcons tc Teleport{tpch,tpobjs,tpsource,tpdest} = alwaysOk
+{- checks for the valid statis of links are tested here.
+e.g. switch active ==> target active constraint can be formulated here.
+also teleports are checked here. -}
+
+playerConstraintsT :: TimePos -> (Player,PlayerT,Player) -> STCons
+playerConstraintsT curr p =
   let needsGroundCheck = runpat (const True) (\_ _ -> False) (const True) True (snd3 p)
       {- case (Completed pa): currently, all completed actions require a grounded place as dest. -}
       
@@ -444,7 +461,7 @@ playerInterferesWithT curr p =
      `also` isPermeable Tr curr p
      {- todo: higher-prototype: check, what all these items do. -}
      `also` (case snd3 p of {- teleport cases: handled automatically by global check in self-consistency -}
-        Initiated (TP _) -> alwaysOk
+        Initiated (TP _) -> alwaysOk {- check, that teleorb exists and can be used. -}
         Completed (TP _) -> alwaysOk
           {- todo: handle TParrive and TPsend case, when player itself is sent. -}
         _ {- non-teleport cases -}  ->
@@ -471,22 +488,22 @@ pastWith ths oth (t,pos) o cb =
         $ show ((t,pos),ths) ++" requires past for "++show o ++ " at " ++ show (dest,oth)
 ;
 
-phyObjInterferesWithT :: TimePos -> (PhyObj,PhyObjT,PhyObj) -> STCons
-phyObjInterferesWithT _ _ = alwaysOk -- TODO
+phyObjConstraintsT :: TimePos -> (PhyObj,PhyObjT,PhyObj) -> STCons
+phyObjConstraintsT _ _ = alwaysOk -- TODO
 
-envInterferesWithT :: TimePos -> (Env,EnvT,Env) -> STCons
-envInterferesWithT _ _ = alwaysOk -- TODO
+envConstraintsT :: TimePos -> (Env,EnvT,Env) -> STCons
+envConstraintsT _ _ = alwaysOk -- TODO
 
-playerInterferesWith :: TimePos -> Player -> STCons
-playerInterferesWith curr p =
+playerConstraints :: TimePos -> Player -> STCons
+playerConstraints curr p =
   isGrounded St curr p
   `also` isPermeable St curr p
   `also` futureWith  St Tr curr p leastc{bctcps = MS.singleton (j p,n,  n)}
   `also` pastWith    St Tr curr p leastc{bctcps = MS.singleton (n  ,n,j p)}
 ;-- we don't require grounded-ness in the transition phase, because that will be handled by the check at the BlockTr.
 
-phyObjInterferesWith :: TimePos -> PhyObj -> STCons
-phyObjInterferesWith curr o =
+phyObjConstraints :: TimePos -> PhyObj -> STCons
+phyObjConstraints curr o =
   isGrounded St curr o
   `also` isPermeable St curr o
   `also` futureWith St Tr curr o leastc{bctcos = MS.singleton (n  ,n,j o)}
@@ -495,8 +512,8 @@ phyObjInterferesWith curr o =
 -- they are not checked, when they are in doors or in player's inventories.
 ;
 
-envInterferesWith :: TimePos -> Env -> STCons
-envInterferesWith curr env =
+envConstraints :: TimePos -> Env -> STCons
+envConstraints curr env =
   {- is grounded -}
   (if (case env of Door _ _ -> True; Switch _ -> True; _ -> False)
     then isGrounded St curr env
@@ -517,8 +534,7 @@ adjustGlobalInfo bct ch0 = foldM f ch0 (bctps bct) where
 -- a function crucial for concreteHistory.
 -- given a set of conditions to be satisfied,
 -- it searches for the simplest BlockSt that satisfies it.
-{- perhaps needs tree-search? perhaps needs explicit encoding
-of choice, such that in the last step, all combinations can be tried? -}
+-- though, this is not needed in the simple simulation approach currently.
 inferMinimal :: Cons BlockSt -> MayContra BlockSt
 inferMinimal _ = failing "TODO: implement inferMinimal using STCons."
 

@@ -20,7 +20,6 @@ import qualified Data.MultiSet as MS
 import Data.Foldable
 import Control.Monad (foldM)
 import Control.Arrow (first,second,(***))
-import Data.Maybe (mapMaybe)
 
 -- import Debug.Trace
 
@@ -135,36 +134,26 @@ failPlayerObsOutOfBounds tpos ch = failing $ "applyPW[unusual]: players observat
 -- TODO: consistency check can be made faster by memoizing
 -- the bidirectional-dependencies. similarities to arc-consistency algo. for Constraint Solving Networks
 
-
 -- returns the set of contradiction descriptions currently in the ConsHistory
 {- only returns local contradictions -}
 contradictions :: ConsHistory -> [ConsDesc]
-contradictions ch = {- we assume that out-of-bounds is a problem. -}
+contradictions ch =
   do let (maxT,(maxX,maxY)) = chsize ch
      t <- [0..maxT]
      x <- [0..maxX]
      y <- ['A'..maxY]
      let curr = (t,(x,y))
-         checkbc  = maybe []{- unknowns ok -} (\(bc::BlockSt)  -> runChecks curr bc  ch)
-         checkbct = maybe []{- unknowns ok -} (\(bct::BlockTr) -> runChecks curr bct ch)
-     uncurry (++)
-      $ atCHboth curr
-        ["block(T) "++show curr++" out-of-bounds"]
-        checkbc checkbct ch
+         checkbc  = maybe []{- unknowns ok -} (\(bc::BlockSt)  -> blockContradictions curr bc  ch)
+         checkbct = maybe []{- unknowns ok -} (\(bct::BlockTr) -> blockContradictions curr bct ch)
+         checkglb = stConsContradictions ch (globalConstraints ch)
+     (checkglb ++) $
+      uncurry (++) $ atCHboth curr ["[fatal]: ill-formed ConsHistory: blocks at "++show curr++" out-of-bounds, but size is" ++ show (chsize ch)]
+                      checkbc checkbct ch
 ;
 
-{- todo: needs better display in Maps.main -}
 {- checks the constraints for a single block. returns contradictions -}
-runChecks :: Block b => TimePos -> b -> ConsHistory -> [ConsDesc]
-runChecks curr b ch = 
-  let chp    = asPartialCH ch
-      ress   = runSTCons chp (allBlockConstraints curr b)
-      {- for all successful partial constraints,
-      check whether ch satisfies it-}
-      mbools = mapMaybe (\(mc,d) -> (,d) <$> (ch `satisfies`) <$> mc) $ ress
-      {- we have a contradiction, iff all partial ch' contradict with ch. -}
-  in  if all (not.fst) mbools then snd <$> mbools else []
-;
+blockContradictions:: Block b => TimePos -> b -> ConsHistory -> [ConsDesc]
+blockContradictions curr b ch = stConsContradictions ch (blockConstraints curr b)
 
 atCHSt :: TimePos -> a {- out of bounds -} -> (Maybe BlockSt -> a) -> ConsHistory -> a
 atCHSt tpos z f = fst . atCHboth tpos z f (const (error "atCH[1]: this cannot happen"))

@@ -119,7 +119,7 @@ main = do
   print map2_GS
   
   putStrLn "\nWith Contradictions:"
-  let contras = contradictions $ gsch map2_GS
+  let contras = contradictions $ (gsch map2_GS)
   let formatter = fst . foldl (\(s,i) c -> if c=='{' then (s++'\n':replicate (i+1) ' '++"{",i+1) else (if c=='}' then (s++"}\n"++replicate (i-1) ' ',i-1) else (s++[c],i))) ("",0)
   mapM_ (\x -> putStrLn (formatter x) >> putStrLn "") contras
   putStrLn $ "\n" ++ show (length contras) ++ " contradictions found."
