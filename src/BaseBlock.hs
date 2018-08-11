@@ -1,4 +1,4 @@
-{-# LANGUAGE TupleSections,ExistentialQuantification,NamedFieldPuns,FlexibleContexts,TypeFamilies,DeriveFunctor #-}
+{-# LANGUAGE TupleSections,ExistentialQuantification,NamedFieldPuns,FlexibleContexts,TypeFamilies,DeriveFunctor,FlexibleInstances #-}
 {-# OPTIONS_GHC -Wall #-}
 
 module BaseBlock (
@@ -30,6 +30,7 @@ module BaseBlock (
     ,STCons
     ,ConsHistoryP(..)
     ,Expr,eLeaf,eAll,eAny
+    ,alwaysOk,neverOk,orElse,also
     ,foldExpr
     ,ConsRes
     ,PlayerInput(..)
@@ -65,7 +66,6 @@ class (Show (This a),Typeable a) => Block a where
   in_standable :: This a -> TimePos -> ConsDesc -> STCons
   permeable :: This a -> TimePos -> ConsDesc -> STCons
   leastc :: Cons a
-  selfconsistent :: a -> STCons
   blockConstraints :: TimePos -> a -> STCons
   reduceToClosed :: Proxy a -> OpenObs a -> ClosedObs a
   applypwObs :: Proxy a -> PWorld a -> (OpenObs a -> b) -> (ClosedObs a -> b) -> b
@@ -298,6 +298,23 @@ foldExpr leaf allExpr anyExpr = go
           Leaf x  -> leaf x
           All  es -> allExpr (go <$> es)
           Any  es -> anyExpr (go <$> es)
+;
+alwaysOk :: STCons
+alwaysOk = eLeaf (CHP M.empty unknownGlobalP,"ok")
+
+neverOk :: ConsDesc -> STCons
+neverOk _msg = todo -- eLeaf (CHP M.empty unknownGlobalP,msg)
+
+orElse :: Expr a -> Expr a -> Expr a
+orElse a b = eAny [a,b]
+
+also :: Expr a -> Expr a -> Expr a 
+also a b = eAll [a,b]
+
+instance Monoid STCons where
+  mempty = alwaysOk
+  mappend = also
+;
 
 {- ================= PLAYER-INPUT ===============
 precondition:

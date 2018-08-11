@@ -37,6 +37,7 @@ module Base(
 Main todo:
 . add extensions: Safe, Trusworthy (fromWhat I wish I knew when learning haskell)
 . implement `runTurn` function
+. finish semantics of constraints in Interference.hs
 . make code easier to understand.
   . replace monolithic folds by composition of simpler specialized functions.
     . e.g. filter p . map f rather than concatMap (when p . f)
@@ -136,7 +137,7 @@ data PhyObjT = NoMotionT | MotionT Dir Dir
   | LandFrom Dir -- land from throws. Dir is L, R or U
   | IntoInventory {- also counting Door or switch -}
   | OntoGround {- also from switch or door -}
-  | TParrive Teleport | TPexit Teleport -- when objects lying on ground are sent though tp.
+  | TParrive Char | TPexit Char -- when objects lying on ground are sent though tp.
   | TPsend | TPget -- teleorbs, when they are on ground, have TPsend for the
   -- source and TPget for the destination orb. both get destroyed then.
   deriving (Eq,Ord)
@@ -166,17 +167,18 @@ data PlayerAction =
   | UseEnvMult [EARep]
   -- multiple env. actions can be done at the same time.
   -- e.g. insert key and enter the door
-  | TP Teleport
-  {- todo: add two actions, for when the player is sent through tunnel.
-    equivalent to TParrve and TPsend from PhyObjT. -}
+  | TP Bool Teleport {- tpinfo, bool: activator is sent -}
+  | TParriveP Char | TPexitP Char {- char id for teleport -}
   deriving (Eq,Ord)
 ;
 
 data Teleport = Teleport {
      tpch :: Char
-    ,tpobjs :: (MultiSet Player, MultiSet PhyObj) -- teleorbs of channel at source/dest. are not sent
-    ,tpsource :: TimePos -- tpos before start of teleportation.
-    ,tpdest   :: TimePos -- tpos at finish of arrival. in case of normal space-tp: currTime+1
+    ,tpobjs :: (MultiSet Player, MultiSet PhyObj) -- teleorbs of channel at source/dest. are not sent.
+      -- we use the state of the objects at the beginning of the teleport
+      -- this only makes a difference for the tp-activating player who loses their teleorb on tp.
+    ,tpsource :: TimePos -- tpos before start of teleportation. tp in trans t.
+    ,tpdest   :: TimePos -- tpos at finish of arrival. in case of normal space-tp: t=currTime+1. tp in transe t-1 == currTime.
   }
   deriving (Eq,Ord)
 
@@ -206,9 +208,11 @@ runpa :: a -> a ->
          (Char -> a) ->
          (EAOnce -> a) ->
          ([EARep] -> a) ->
-         (Teleport -> a) ->
+         (Bool -> Teleport -> a) ->
+         (Char -> a) ->
+         (Char -> a) ->
          PlayerAction -> a
-runpa ml mr ju jul jur na pk pt tl tr newto ueo uem tele pa =
+runpa ml mr ju jul jur na pk pt tl tr newto ueo uem tele tpa tpe pa =
   case pa of MoveL -> ml
              MoveR -> mr
              JumpU -> ju
@@ -222,17 +226,19 @@ runpa ml mr ju jul jur na pk pt tl tr newto ueo uem tele pa =
              NewTOs c -> newto c
              UseEnvOnce eao -> ueo eao
              UseEnvMult eam -> uem eam
-             TP tp -> tele tp
+             TP b tp -> tele b tp
+             TParriveP c -> tpa c
+             TPexitP c -> tpe c
 ;
 toDirpa :: PlayerAction -> Maybe Dir
 toDirpa = runpa (j L) (j R) (j U) (j U) (j U)
-          n (\_->n) (\_->n) (\_ _->n) (\_ _->n) (\_->n) (\_->n) (\_->n) (\_->n)
+          n (\_->n) (\_->n) (\_ _->n) (\_ _->n) (\_->n) (\_->n) (\_->n) (\_ _->n) (\_ ->n) (\_ ->n)
 
 ;
 -- called on a (Completed playerAction)
 fromDirpa :: PlayerAction -> Maybe Dir
 fromDirpa = runpa (j R) (j L) (j D) (j R) (j L)
-          n (\_->n) (\_->n) (\_ _->n) (\_ _->n) (\_->n) (\_->n) (\_->n) (\_->n)
+          n (\_->n) (\_->n) (\_ _->n) (\_ _->n) (\_->n) (\_->n) (\_->n) (\_ _->n) (\_ ->n) (\_ ->n)
 ;
 
 runpat :: (PlayerAction -> a) -> 
@@ -265,7 +271,7 @@ runPhyObjT :: a
   -> (Dir -> Dir -> a)
   -> (Dir -> a)
   -> a -> a
-  -> (Teleport -> a) -> (Teleport -> a)
+  -> (Char -> a) -> (Char -> a)
   -> a -> a
   -> PhyObjT -> a
 runPhyObjT nomot mot lf inv grd tparr tpext tpsnd tpget o = case o of
@@ -274,8 +280,8 @@ runPhyObjT nomot mot lf inv grd tparr tpext tpsnd tpget o = case o of
   LandFrom di      -> lf di
   IntoInventory    -> inv
   OntoGround       -> grd
-  TParrive t       -> tparr t
-  TPexit   t       -> tpext t
+  TParrive c       -> tparr c
+  TPexit   c       -> tpext c
   TPsend           -> tpsnd
   TPget            -> tpget
 ;

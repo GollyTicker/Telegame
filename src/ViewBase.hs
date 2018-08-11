@@ -78,8 +78,9 @@ instance Show PlayerAction where
   show  =
     runpa "<-" "->" "^" "^\\" "/^" "stay"
           (\o -> ("pick("++ show o++")")) (\o -> ("put("++ show o++")"))
-          (show `dot` ThrowL) (show `dot` ThrowR) (show . NewTOs) show show show
-;
+          (show `dot` ThrowL) (show `dot` ThrowR) (show . NewTOs) show show
+          (\b tp -> show tp ++ if b then "+self" else "")
+          (\tc -> "tpv("++show tc++")") (\tc -> "tp^("++show tc++")")
 
 instance Show Teleport where
   show (Teleport ch (ps,os) ts td) =

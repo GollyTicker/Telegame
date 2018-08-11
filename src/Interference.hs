@@ -1,7 +1,7 @@
-{-# LANGUAGE CPP,TupleSections,NamedFieldPuns,TypeFamilies,StandaloneDeriving,DeriveDataTypeable,FlexibleContexts,FlexibleInstances,TypeSynonymInstances,ScopedTypeVariables #-}
+{-# LANGUAGE CPP,TupleSections,NamedFieldPuns,TypeFamilies,StandaloneDeriving,DeriveDataTypeable,FlexibleContexts,FlexibleInstances,ScopedTypeVariables #-}
 -- GHC CPP macros: https://downloads.haskell.org/~ghc/8.0.1/docs/html/users_guide/phases.html#standard-cpp-macros
 -- https://guide.aelve.com/haskell/cpp-vww0qd72
-{-# OPTIONS_GHC -Wall -fno-warn-orphans #-}
+{-# OPTIONS_GHC -Wall -fno-warn-orphans -fno-warn-missing-signatures #-}
 
 module Interference(
      module BaseBlock
@@ -24,7 +24,8 @@ import ViewBase(enclosing,dot)
 import qualified Data.Map as M
 import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MS
-import Control.Arrow (second,(***))
+import Control.Arrow (first,second,(***))
+import Data.Dynamic
 -- import Debug.Trace
 -- import Control.Applicative
 
@@ -36,9 +37,6 @@ instance Block BlockSt where
       ,bccos  :: MultiSet PhyObj
       ,bccps  :: MultiSet Player
     } deriving (Ord,Eq)
-    -- OneP Player | OneO PhyObj | Bgrd Env
-    -- => e.g. OneP p1 & OneP p1 & OneP p2 & Bgrd (Door 0 0) <=>
-    -- BSCons MultiSet(p1,p1,p2) + Door 0 0 ==> ".P1. .P1. .P2. D00"
   type Antcpt BlockSt = Space (Maybe BlockSt)
   data This BlockSt = St
   this = St
@@ -115,12 +113,12 @@ deriving instance Typeable BlockTr
 deriving instance Data GameState
 deriving instance Typeable GameState
 
-is_a :: (Block b,Block c) => This b -> This c -> Bool
+is_a :: (Typeable a,Typeable b) => a -> b -> Bool
 ths `is_a` oth = typeOf ths == typeOf oth
 
-{- used for teleport-check in self-consistency -}
---mkGlobalCC :: CH_Global -> ConsDesc -> STCons
---mkGlobalCC cchg str = STC [Leaf (cchg,M.empty,str)]
+{- used for teleport-constraints -}
+mkSTConsOnGlobal :: CH_GlobalP -> ConsDesc -> STCons
+mkSTConsOnGlobal chgl str = eLeaf (CHP M.empty chgl,str)
 
 mkSTConsFromChoice :: Block b => This b -> TimePos -> [Cons b] -> ConsDesc -> STCons
 mkSTConsFromChoice ths tpos bcs str = eAny $ 
@@ -134,45 +132,6 @@ mkSimpleSTConsWithGlobal ths tpos cchg cb str =
 
 mkSimpleSTCons :: Block b => This b -> TimePos -> Cons b -> ConsDesc -> STCons
 mkSimpleSTCons ths tpos cb str = mkSimpleSTConsWithGlobal ths tpos unknownGlobalP cb str
-
-{- y-axis is pointed downwards -}
--- isGrounded ensures, that current position is on ground.
--- either through looking at below, or through a platform at same position
-isGrounded :: (Show a,Block b) => This b -> TimePos -> a -> STCons
-isGrounded ths curr@(t,(x,y)) reason =
-  let below = (t,(x,succ y))
-  in  in_standable ths curr (show (curr,ths) ++ " needs standable (cause: "++show reason++") in "++ show  curr)
-      `orElse` on_standable ths below (show (curr,ths) ++ " needs standable (cause: "++show reason++") on "++ show below)
-;
-
-isPermeable :: (Block b,Show a) => This b -> TimePos -> a -> STCons
-isPermeable ths curr reason = permeable ths curr (show (curr,ths) ++ " requires permeability (cause: " ++ show reason ++ ")")
-
-{- connectives and neutral-elem for building STCons from others.
---concretec :: TimePos -> Cons a -> Either ConsFail a
-andc :: Cons a -> Cons a -> Either ConsFail (Cons a)
-satisfiesc :: a -> Cons a -> Maybe ConsFail
-concretec BCC{bccps,bccos,bccenv} =
-  maybeToEither "No minimal env possible dueto unknown env." $ (\env -> BC {bcps = bccps, bcos=bccos, bcenv = env}) <$> bccenv 
-concretec = todo
--}
-
-okc :: (ConsHistoryP,ConsDesc)
-okc = (CHP M.empty unknownGlobalP,"ok")
-
-alwaysOk :: STCons
-alwaysOk = eLeaf okc
-
-orElse :: Expr a -> Expr a -> Expr a
-orElse a b = eAny [a,b]
-
-also :: Expr a -> Expr a -> Expr a 
-also a b = eAll [a,b]
-
-instance Monoid STCons where
-  mempty = alwaysOk
-  mappend = also
-;
 
 asPartialCH :: ConsHistory -> ConsHistoryP
 asPartialCH = toPartial
@@ -430,12 +389,65 @@ blkConstraintsT curr bct =
   `also` ( envConstraintsT curr (bctenv bct))
 ;
 
-globalConstraints :: ConsHistory -> STCons
-globalConstraints CH{chspace,chglobal} = mconcat $ map (uncurry mkTPcons) $ M.toList chglobal 
-  where mkTPcons tc Teleport{tpch,tpobjs,tpsource,tpdest} = alwaysOk
-{- checks for the valid statis of links are tested here.
+{- checks for the valid status of links are tested here.
 e.g. switch active ==> target active constraint can be formulated here.
 also teleports are checked here. -}
+globalConstraints :: ConsHistory -> STCons
+globalConstraints CH{chglobal} = mconcat $ map (uncurry mkTPcons) $ M.toList chglobal 
+  where {- assumption: tpch == tc -}
+    mkTPcons _tc tp@Teleport{tpobjs=(ps,os)} =
+      (objectAt tp) `foldMap` {- generic programming for checking objects are at source/dest-}
+        (map toDyn (MS.toList os) ++ map toDyn (MS.toList ps))
+      `also` alwaysOk {- TPsend at source -}
+      `also` alwaysOk {- TPget  at source -}
+; {- todo: perhaps use simply Either instead of dynamic? more type safety! -}
+
+objectAt :: Teleport -> Dynamic -> STCons
+objectAt tp@Teleport{tpsource,tpdest} o =
+  let arrive = first pred $ tpdest in
+  mkSTConsFromChoice Tr tpsource (tpExit tp o) (show tpsource ++ " needs a tp-exiting object " ++ showObj o)
+  `also` mkSTConsFromChoice Tr arrive (tpArrive tp o) (show arrive ++ " needs a tp-arriving object " ++ showObj o)
+;
+
+applyIf :: (Typeable a, Typeable b) => (a -> b) -> Dynamic -> Dynamic
+applyIf f d = case fromDynamic d of
+  Just (a::a)  -> toDyn (f a)
+  Nothing -> d
+;
+
+{- functions. only call on players or phyObjs -}
+showObj :: Dynamic -> String
+showObj = (\d -> fromDyn d "fatal[showObj]: was not player or phyobj")
+  . applyIf (show :: Player -> String)
+  . applyIf (show :: PhyObj -> String)
+
+tpArrive,tpExit :: Teleport -> Dynamic -> [Cons BlockTr]
+tpArrive tp = (\d -> fromDyn d $ error "fatal[tpArrive]: was not player or phyobj")
+   . applyIf (tpArrivePlayer tp :: Player -> [Cons BlockTr])
+   . applyIf (tpArrivePhyObj tp :: PhyObj -> [Cons BlockTr])
+;
+tpExit tp = (\d -> fromDyn d $ error "fatal[tpExit]: was not player or phyobj")
+  . applyIf (tpExitPlayer tp :: Player -> [Cons BlockTr])
+  . applyIf (tpExitPhyObj tp :: PhyObj -> [Cons BlockTr])
+;
+
+tpArrivePlayer tp@Teleport{tpch} p =
+  {- dont know, whether teleport is from 0 -> 1 or 1 -> 0. and whether player is activator or not -}
+  let p' b i = p{pinventory= adaptInv b i $ pinventory p}
+      adaptInv b i = if b then (MS.delete (TOrb tpch i)) else id in
+  ((\b i -> leastc{bctcps=MS.singleton (j (p' b i),j (Completed (TP b tp)),j p)} ) <$> [True,False] <*> [0,1])
+    ++ return leastc{bctcps=MS.singleton (j p,j (Completed (TParriveP tpch)),j p)}
+;
+tpExitPlayer tp@Teleport{tpch} p =
+  {- dont know, whether teleport is from 0 -> 1 or 1 -> 0. and whether player is activator or not -}
+  let p' b i = p{pinventory= adaptInv b i $ pinventory p}
+      adaptInv b i = if b then (MS.delete (TOrb tpch i)) else id in
+  ((\b i -> leastc{bctcps=MS.singleton (j (p' b i),j (Initiated (TP b tp)),j p)} ) <$> [True,False] <*> [0,1])
+    ++ return leastc{bctcps=MS.singleton (j p,j (Completed (TPexitP tpch)),j p)}
+
+tpArrivePhyObj _ _ = [leastc] {- todo all -}
+tpExitPhyObj _ _ = [leastc]
+
 
 playerConstraintsT :: TimePos -> (Player,PlayerT,Player) -> STCons
 playerConstraintsT curr p =
@@ -461,8 +473,8 @@ playerConstraintsT curr p =
      `also` isPermeable Tr curr p
      {- todo: higher-prototype: check, what all these items do. -}
      `also` (case snd3 p of {- teleport cases: handled automatically by global check in self-consistency -}
-        Initiated (TP _) -> alwaysOk {- check, that teleorb exists and can be used. -}
-        Completed (TP _) -> alwaysOk
+        Initiated (TP _ tp) -> mkSTConsOnGlobal (M.singleton (tpch tp) tp) $ "Player "++show (fst3 p)++" using tele-orb["++show (tpch tp)++"] fixing it to "++ show tp
+        Completed (TP _ tp) -> mkSTConsOnGlobal (M.singleton (tpch tp) tp) $ "Player "++show (fst3 p)++" used tele-orb[" ++show (tpch tp)++"] fixing it to "++ show tp    
           {- todo: handle TParrive and TPsend case, when player itself is sent. -}
         _ {- non-teleport cases -}  ->
           (if leavesPuzzle then alwaysOk else case movingNext of
@@ -523,8 +535,8 @@ envConstraints curr env =
 
 adjustGlobalInfo :: BlockTr -> ConsHistory -> MayContra ConsHistory
 adjustGlobalInfo bct ch0 = foldM f ch0 (bctps bct) where
-  f ch (_,Completed (TP tp),_) = if insertable tp ch then success (inserttp tp ch) else failing $ failStr tp ch
-  f ch (_,Initiated (TP tp),_) = if insertable tp ch then success (inserttp tp ch) else failing $ failStr tp ch
+  f ch (_,Completed (TP _ tp),_) = if insertable tp ch then success (inserttp tp ch) else failing $ failStr tp ch
+  f ch (_,Initiated (TP _ tp),_) = if insertable tp ch then success (inserttp tp ch) else failing $ failStr tp ch
   f ch _ = success ch
   insertable t ch = maybe True (t==) $ M.lookup (tpch t) (chglobal ch)
   inserttp   t ch = ch {chglobal = M.insert (tpch t) t (chglobal ch)}
