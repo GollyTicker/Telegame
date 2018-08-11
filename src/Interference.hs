@@ -252,7 +252,7 @@ runSTCons chp0 stcons = foldExpr leaf allExpr anyExpr stcons $ chp0
 
 {- elements which support conjunctive merging and partial description. -}
 class Partial a where
-  conjunct :: a -> a -> Maybe a
+  conjunct :: a -> a -> Maybe a {- todo: for error reporting, this should also return place of error+desc -}
   {- ASSOCIATIVE -}
   
   type Concrete a :: *
@@ -465,7 +465,7 @@ futureWith ths oth (t,pos) o cb =
 
 pastWith :: (Show a, Block b, Block c) => This b -> This c -> TimePos -> a -> Cons c -> STCons
 pastWith ths oth (t,pos) o cb =
-  let (dest,atBoundary) = if ths `is_a` St then ((t-1,pos),t <= 0) else ((t+1,pos),False)
+  let (dest,atBoundary) = if ths `is_a` St then ((t-1,pos),t <= 0) else ((t,pos),False)
   in  if atBoundary then alwaysOk
       else mkSimpleSTCons oth dest cb
         $ show ((t,pos),ths) ++" requires past for "++show o ++ " at " ++ show (dest,oth)

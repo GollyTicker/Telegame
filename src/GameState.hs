@@ -153,6 +153,7 @@ contradictions ch = {- we assume that out-of-bounds is a problem. -}
         checkbc checkbct ch
 ;
 
+{- todo: needs better display in Maps.main -}
 {- checks the constraints for a single block. returns contradictions -}
 runChecks :: Block b => TimePos -> b -> ConsHistory -> [ConsDesc]
 runChecks curr b ch = 

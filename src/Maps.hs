@@ -120,7 +120,8 @@ main = do
   
   putStrLn "\nWith Contradictions:"
   let contras = contradictions $ gsch map2_GS
-  mapM_ (\x -> print x >> putStrLn "") contras
+  let formatter = fst . foldl (\(s,i) c -> if c=='{' then (s++'\n':replicate (i+1) ' '++"{",i+1) else (if c=='}' then (s++"}\n"++replicate (i-1) ' ',i-1) else (s++[c],i))) ("",0)
+  mapM_ (\x -> putStrLn (formatter x) >> putStrLn "") contras
   putStrLn $ "\n" ++ show (length contras) ++ " contradictions found."
   
   -- putStrLn "Minimal GameState:" >> print map2_initGS

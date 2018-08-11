@@ -40,6 +40,7 @@ deriving instance Show (Cons BlockSt)
 deriving instance Show (Cons BlockTr)
 deriving instance Show EnvT
 deriving instance Show PlayerInput
+deriving instance Show ConsHistoryP
   
 instance Show BlockTr where
   show (BCT (env1,envt,env2) ots pts) =
