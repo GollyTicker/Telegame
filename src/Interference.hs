@@ -393,20 +393,19 @@ blkConstraintsT curr bct =
 e.g. switch active ==> target active constraint can be formulated here.
 also teleports are checked here. -}
 globalConstraints :: ConsHistory -> STCons
-globalConstraints CH{chglobal} = mconcat $ map (uncurry mkTPcons) $ M.toList chglobal 
-  where {- assumption: tpch == tc -}
-    mkTPcons _tc tp@Teleport{tpobjs=(ps,os)} =
+globalConstraints CH{chglobal} = mconcat $ map (mkTPcons.snd) $ M.toList chglobal 
+  where
+    mkTPcons tp@Teleport{tpobjs=(ps,os)} =
       (objectAt tp) `foldMap` {- generic programming for checking objects are at source/dest-}
         (map toDyn (MS.toList os) ++ map toDyn (MS.toList ps))
-      `also` alwaysOk {- TPsend at source -}
-      `also` alwaysOk {- TPget  at source -}
+      `also` tOrbsAtBothSides tp
 ; {- todo: perhaps use simply Either instead of dynamic? more type safety! -}
 
 objectAt :: Teleport -> Dynamic -> STCons
 objectAt tp@Teleport{tpsource,tpdest} o =
   let arrive = first pred $ tpdest in
-  mkSTConsFromChoice Tr tpsource (tpExit tp o) (show tpsource ++ " needs a tp-exiting object " ++ showObj o)
-  `also` mkSTConsFromChoice Tr arrive (tpArrive tp o) (show arrive ++ " needs a tp-arriving object " ++ showObj o)
+  mkSTConsFromChoice Tr tpsource (tpExit tp o) (show (tpsource,Tr) ++ " needs a tp-exiting object " ++ showObj o)
+  `also` mkSTConsFromChoice Tr arrive (tpArrive tp o) (show (arrive,Tr) ++ " needs a tp-arriving object " ++ showObj o)
 ;
 
 applyIf :: (Typeable a, Typeable b) => (a -> b) -> Dynamic -> Dynamic
@@ -445,9 +444,17 @@ tpExitPlayer tp@Teleport{tpch} p =
   ((\b i -> leastc{bctcps=MS.singleton (j (p' b i),j (Initiated (TP b tp)),j p)} ) <$> [True,False] <*> [0,1])
     ++ return leastc{bctcps=MS.singleton (j p,j (Completed (TPexitP tpch)),j p)}
 
-tpArrivePhyObj _ _ = [leastc] {- todo all -}
-tpExitPhyObj _ _ = [leastc]
-
+tpArrivePhyObj tp o = return leastc{bctcos=MS.singleton (j o,j $ TParrive (tpch tp),j o)}
+tpExitPhyObj   tp o = return leastc{bctcos=MS.singleton (j o,j $ TPexit   (tpch tp),j o)}
+tOrbsAtBothSides Teleport{tpch,tpsource,tpdest} = foldr1 orElse $
+  do i <- [0,1]
+     let sdr = TOrb tpch i
+         rcv = TOrb tpch (1-i)
+         dest = first pred $ tpdest
+     return $ {- todo: need a way to check, that there is one teleorb less now... -}
+      mkSimpleSTCons Tr tpsource leastc{bctcos=MS.singleton (j sdr,j $ TPsend,n)} (show (tpsource,Tr) ++ " needs to have the sender tele-orb " ++ show sdr)
+      `also` mkSimpleSTCons Tr dest leastc{bctcos=MS.singleton (j rcv,j $ TPget,n)} (show (dest,Tr) ++ " needs to have the receiver tele-orb " ++ show rcv)
+;
 
 playerConstraintsT :: TimePos -> (Player,PlayerT,Player) -> STCons
 playerConstraintsT curr p =
