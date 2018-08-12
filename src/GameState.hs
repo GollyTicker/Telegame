@@ -20,6 +20,7 @@ import qualified Data.MultiSet as MS
 import Data.Foldable
 import Control.Monad (foldM)
 import Control.Arrow (first,second,(***))
+import Data.List (intercalate)
 
 -- import Debug.Trace
 
@@ -201,14 +202,6 @@ default2DMap :: Pos -> a -> Space a
 default2DMap (sx,sy) e = M.fromList $ (\x y -> ((x,y),e)) <$> [0..sx] <*> ['A'..sy]
 ;
 
-{- used in runTurn
-extendCHTo :: Time -> ConsHistory -> ConsHistory
-extendCHTo tMax ch@CH{chsize,chspace} =
-  let new = M.union chspace $ M.fromList
-        $ (,default2DMap (snd chsize) (Nothing,Nothing))
-          <$> [fst chsize..tMax]
-  in  ch{chspace = new}
--}
 {- IMPORTANT TODO:
     I need a way to allow multiple players to move at once.
     If only once player moves, then inserting their observations
@@ -235,9 +228,36 @@ extendCHTo tMax ch@CH{chsize,chspace} =
     new observations and an updates consistency history OR
     it returns contradiction warnings.
 -}
-runTurn :: GameState -> Time -> M.Map Player (MultiSet PlayerInput) -> MayContra GameState
-runTurn _gs0 _t _mmspi = undefined {-do
+runTurn :: GameState -> Time -> MultiSet (TimePos,Player,PlayerInput) -> MayContra GameState
+runTurn gs0 t mspi =
+  do mps <- findAllPlayers t (chspace . gsch $ gs0)
+     ensureEveryPlayerIsMatched mps mspi
+     todo
+  {-
   pw <- findPWorldInGameState gs0 spi
   let obs = inputToObs (fmap (sobservations pw,) spi)
   addToObservations obs gs0-}
 ;
+
+ensureEveryPlayerIsMatched :: MultiSet (TimePos,Player) -> MultiSet (TimePos,Player,PlayerInput) -> MayContra ()
+ensureEveryPlayerIsMatched mps msp =
+  let msp' = MS.map (\(tpos,p,_) -> (tpos,p)) $ msp
+      unmatched = mps MS.\\ msp' :: MultiSet (TimePos,Player)
+  in  if null unmatched then return () else
+        Left . return
+          . ("Couldn't find commands for: " ++)
+          . intercalate " and "
+          . map (\(tp,p) -> show p++" at "++show tp )
+          . MS.toList
+          $ unmatched
+;
+
+findAllPlayers :: Time -> Timed (Space Field) -> MayContra (MultiSet (TimePos,Player))
+findAllPlayers t st =
+  fmap MS.unions
+  . fmap (\xs ->  do (pos,(Just BC{bcps},_)) <- M.toList xs; return (MS.map ((t,pos),) bcps))
+  . maybeToEither [("History is unknown at time " ++ show t)]
+  $ M.lookup t st
+
+
+
