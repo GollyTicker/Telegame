@@ -35,9 +35,30 @@ module Base(
 
 {-
 Main todo:
+
+[SMART] = Specific Measureable Achiveable Realistic Timed
+
+. working interactive prototype with tutorial and focus on tp-interactions
+  . UI
+    . give actions to players at time t
+      . [SMAR] design ui elements for specifying Player and PlayerInput
+        . [SMART, 15min] choose actions
+        . [SMART, 30min] anticipation of states
+          . [SMART, 30min] select state and edit contents
+    . scroll through history as assembled from player observations
+      . [SMAR] minkowski view
+    . try 'finish puzzle' with a button that runs the concretizer
+      . [SMART, 15min] make button and list results
+  . game-internals
+    . player throw+pick objects + jumps + env-actions
+    . teleorbs may be created and used. destroyed when used.
+    . final concretizer
+      . run from t=0 and apply collected player-commands successively
+      . return with contradiction warning or puzzle-solve success
+
+
 . add extensions: Safe, Trusworthy (fromWhat I wish I knew when learning haskell)
 . implement `runTurn` function
-. finish semantics of constraints in Interference.hs
 . make code easier to understand.
   . replace monolithic folds by composition of simpler specialized functions.
     . e.g. filter p . map f rather than concatMap (when p . f)
@@ -47,11 +68,6 @@ Main todo:
 . INTEGRATE stack into Haste. unified and reproduceable build
 . use a good haskell IDE to make types support writing even more?
   https://github.com/haskell/haskell-ide-engine
-. use refinement types with liquid haskell to make better compile time assurance
-  . or maybe simply stick to quickcheck? liquid haskell needs more time to learn though...
-    especially, I want to "prove" properties between functions. and this is
-    not immediately possible without existentials
-  . add more properties and tests for quickcheck
 . look at contradiction messages for the example and improve them.
   . make hunit tests? that would be nice
 . use blaze to generate the html? https://jaspervdj.be/blaze/tutorial.html

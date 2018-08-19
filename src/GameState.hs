@@ -234,7 +234,6 @@ runTurn gs0 t mspi =
      ensureEveryPlayerIsMatched mps mspi
      todo
   {-
-  pw <- findPWorldInGameState gs0 spi
   let obs = inputToObs (fmap (sobservations pw,) spi)
   addToObservations obs gs0-}
 ;
