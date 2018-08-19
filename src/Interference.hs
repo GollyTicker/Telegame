@@ -250,6 +250,8 @@ defaultConjunct a b = if a == b then Just a else Nothing
 
 instance Partial ConsHistoryP where
   conjunct (CHP st1 gl1) (CHP st2 gl2) = uncurry CHP <$> (st1,gl1) `conjunct` (st2,gl2)
+  conjunct Unfulfillable _ = Just Unfulfillable
+  conjunct _ Unfulfillable = Just Unfulfillable
   type Concrete ConsHistoryP = ConsHistory
   toPartial CH{chspace,chglobal} =
     CHP
@@ -268,6 +270,7 @@ instance Partial ConsHistoryP where
                 (blk bst *** blk btr)
                 $ M.lookup k mp)
            $ chpspace)
+  satisfies _ Unfulfillable = False
 ;
 
 {- could use GHC.Generics here ... -}
@@ -435,17 +438,17 @@ tpArrivePlayer tp@Teleport{tpch} p =
   let p' b i = p{pinventory= adaptInv b i $ pinventory p}
       adaptInv b i = if b then (MS.delete (TOrb tpch i)) else id in
   ((\b i -> leastc{bctcps=MS.singleton (j (p' b i),j (Completed (TP b tp)),j p)} ) <$> [True,False] <*> [0,1])
-    ++ return leastc{bctcps=MS.singleton (j p,j (Completed (TParriveP tpch)),j p)}
+    ++ return leastc{bctcps=MS.singleton (j p,j (Completed (TParriveP tp)),j p)}
 ;
 tpExitPlayer tp@Teleport{tpch} p =
   {- dont know, whether teleport is from 0 -> 1 or 1 -> 0. and whether player is activator or not -}
   let p' b i = p{pinventory= adaptInv b i $ pinventory p}
       adaptInv b i = if b then (MS.delete (TOrb tpch i)) else id in
   ((\b i -> leastc{bctcps=MS.singleton (j (p' b i),j (Initiated (TP b tp)),j p)} ) <$> [True,False] <*> [0,1])
-    ++ return leastc{bctcps=MS.singleton (j p,j (Completed (TPexitP tpch)),j p)}
+    ++ return leastc{bctcps=MS.singleton (j p,j (Completed (TPexitP tp)),j p)}
 
-tpArrivePhyObj tp o = return leastc{bctcos=MS.singleton (j o,j $ TParrive (tpch tp),j o)}
-tpExitPhyObj   tp o = return leastc{bctcos=MS.singleton (j o,j $ TPexit   (tpch tp),j o)}
+tpArrivePhyObj tp o = return leastc{bctcos=MS.singleton (j o,j $ TParrive tp,j o)}
+tpExitPhyObj   tp o = return leastc{bctcos=MS.singleton (j o,j $ TPexit   tp,j o)}
 tOrbsAtBothSides Teleport{tpch,tpsource,tpdest} = foldr1 orElse $
   do i <- [0,1]
      let sdr = TOrb tpch i
@@ -458,39 +461,39 @@ tOrbsAtBothSides Teleport{tpch,tpsource,tpdest} = foldr1 orElse $
 
 playerConstraintsT :: TimePos -> (Player,PlayerT,Player) -> STCons
 playerConstraintsT curr p =
-  let needsGroundCheck = runpat (const True) (\_ _ -> False) (const True) True (snd3 p)
-      {- case (Completed pa): currently, all completed actions require a grounded place as dest. -}
-      
-      {- physical movement: movingNext = Nothing, if player doesn't move out of current block.
-         Just Dir, if the player continues in direction Dir. time-inverse with Next<->From. teleport is not included here -}
-      movingNext   = runpat toDirpa (\_ y->Just y) (const Nothing) Nothing (snd3 p)
-      nextReqStr d = show (curr,Tr) ++ " requires a continuation of movement "     ++ show (snd3 p) ++ " to " ++ show (applyDir d curr,Tr)
-      
-      movingFrom   = runpat (const Nothing) (\x _->Just x) fromDirpa (Just U) (snd3 p)
-      fromReqStr d = show (curr,Tr) ++ " requires a preceding action to continue " ++ show (snd3 p) ++ " from " ++ show (applyDir d curr,Tr)
-      
-      leavesPuzzle = case snd3 p of
-        (Completed (UseEnvMult es)) -> case es of [] -> False; _non_empty -> last es == TraverseDoor
-        _ -> False
-      
-      succs (_,pt,p1) = MS.fromList $ (\(pa ,pta)-> (j pa,j pta,   n)) <$> successors   (pt,p1)
-      preds (p0,pt,_) = MS.fromList $ (\(pta,pa )-> (n   ,j pta,j pa)) <$> predecessors (p0,pt)
-      
-  in (if needsGroundCheck then isGrounded Tr curr p else alwaysOk)
-     `also` isPermeable Tr curr p
-     {- todo: higher-prototype: check, what all these items do. -}
-     `also` (case snd3 p of {- teleport cases: handled automatically by global check in self-consistency -}
-        Initiated (TP _ tp) -> mkSTConsOnGlobal (M.singleton (tpch tp) tp) $ "Player "++show (fst3 p)++" using tele-orb["++show (tpch tp)++"] fixing it to "++ show tp
-        Completed (TP _ tp) -> mkSTConsOnGlobal (M.singleton (tpch tp) tp) $ "Player "++show (fst3 p)++" used tele-orb[" ++show (tpch tp)++"] fixing it to "++ show tp    
-          {- todo: handle TParrive and TPsend case, when player itself is sent. -}
-        _ {- non-teleport cases -}  ->
-          (if leavesPuzzle then alwaysOk else case movingNext of
-              Nothing -> futureWith Tr St curr (thd3 p) leastc{bccps=MS.singleton (thd3 p)}
-              Just d  -> mkSimpleSTCons Tr (applyDir d curr) leastc{bctcps=succs p} (nextReqStr d)
-          ) `also` case movingFrom of
-              Nothing -> pastWith   Tr St curr (fst3 p) leastc{bccps=MS.singleton (fst3 p)}
-              Just d  -> mkSimpleSTCons Tr (applyDir d curr) leastc{bctcps=preds p} (fromReqStr d)
-      )
+  (needsGroundCheck `implies` isGrounded Tr curr p)
+  `also` isPermeable Tr curr p
+  `also` (case snd3 p of {- teleport cases: handled automatically by global check in self-consistency -}
+     Initiated (TP _ tp) -> mkSTConsOnGlobal (M.singleton (tpch tp) tp) $ "Player "++show (fst3 p)++" using tele-orb["++show (tpch tp)++"] fixing it to "++ show tp
+     Completed (TP _ tp) -> mkSTConsOnGlobal (M.singleton (tpch tp) tp) $ "Player "++show (fst3 p)++" used tele-orb[" ++show (tpch tp)++"] fixing it to "++ show tp    
+     Completed (TParriveP tp) -> mkSTConsOnGlobal (M.singleton (tpch tp) tp) $ "Player "++show (fst3 p)++" arrived through tele-orb[" ++show (tpch tp)++"] fixing it to "++ show tp    
+     Completed (TPexitP   tp) -> mkSTConsOnGlobal (M.singleton (tpch tp) tp) $ "Player "++show (fst3 p)++ " exited through tele-orb[" ++show (tpch tp)++"] fixing it to "++ show tp    
+     _ {- non-teleport cases -} ->
+       (if leavesPuzzle then alwaysOk else case movingNext of
+           Nothing -> futureWith Tr St curr (thd3 p) leastc{bccps=MS.singleton (thd3 p)}
+           Just d  -> mkSimpleSTCons Tr (applyDir d curr) leastc{bctcps=succs p} (nextReqStr d)
+       ) `also` case movingFrom of
+           Nothing -> pastWith   Tr St curr (fst3 p) leastc{bccps=MS.singleton (fst3 p)}
+           Just d  -> mkSimpleSTCons Tr (applyDir d curr) leastc{bctcps=preds p} (fromReqStr d)
+    )
+  {- todo: higher-prototype: check, what all these items do. -}
+  where needsGroundCheck = runpat (const True) (\_ _ -> False) (const True) True (snd3 p)
+        {- case (Completed pa): currently, all completed actions require a grounded place as dest. -}
+        
+        {- physical movement: movingNext = Nothing, if player doesn't move out of current block.
+           Just Dir, if the player continues in direction Dir. time-inverse with Next<->From. teleport is not included here -}
+        movingNext   = runpat toDirpa (\_ y->Just y) (const Nothing) Nothing (snd3 p)
+        nextReqStr d = show (curr,Tr) ++ " requires a continuation of movement "     ++ show (snd3 p) ++ " to " ++ show (applyDir d curr,Tr)
+        
+        movingFrom   = runpat (const Nothing) (\x _->Just x) fromDirpa (Just U) (snd3 p)
+        fromReqStr d = show (curr,Tr) ++ " requires a preceding action to continue " ++ show (snd3 p) ++ " from " ++ show (applyDir d curr,Tr)
+        
+        leavesPuzzle = case snd3 p of
+          (Completed (UseEnvMult es)) -> case es of [] -> False; _non_empty -> last es == TraverseDoor
+          _ -> False
+        
+        succs (_,pt,p1) = MS.fromList $ (\(pa ,pta)-> (j pa,j pta,   n)) <$> successors   (pt,p1)
+        preds (p0,pt,_) = MS.fromList $ (\(pta,pa )-> (n   ,j pta,j pa)) <$> predecessors (p0,pt)
 ;
 
 futureWith :: (Show a, Block b, Block c) => This b -> This c -> TimePos -> a -> Cons c -> STCons
@@ -508,7 +511,38 @@ pastWith ths oth (t,pos) o cb =
 ;
 
 phyObjConstraintsT :: TimePos -> (PhyObj,PhyObjT,PhyObj) -> STCons
-phyObjConstraintsT _ _ = alwaysOk -- TODO
+phyObjConstraintsT curr pot@(o,ot,o') =
+  isPermeable Tr curr pot
+  `also` (needsGroundCheck `implies` isGrounded Tr curr pot)
+  `also` fromBool validTriple (show curr ++ " needs a self-consistent phy-obj transition: " ++ show pot)
+  `also` phyObjTcasedistinctions
+  where
+    needsGroundCheck = case ot of
+      NoMotionT -> True
+      LandFrom _ -> True
+      IntoInventory -> True
+      OntoGround -> True
+      TParrive _ -> True
+      TPexit _ -> True
+      TPsend -> True
+      TPget -> True
+      _ -> False
+    validTriple = case ot of
+      NoMotionT -> o == o'
+      MotionT f t -> o == o' && (f,t) `elem` (zip [L,L,U,R,R] [D,R,D,D,L])
+      LandFrom d -> o == o' && d `elem` [L,U,R]
+      _ -> True
+    phyObjTcasedistinctions = case ot of
+      MotionT f t -> from f `also` to t
+      {- todo: handle case for thrown object. needs new phyObjT action -}
+      LandFrom f -> from f
+      _ -> alwaysOk {- todo -}
+    from f = mkSTConsFromChoice Tr (applyDir (invDir f) curr)
+      ((\x -> leastc{bctcos=MS.singleton (n,j x,j o)}) <$> phyObjTo (invDir f))
+      (show curr ++ " needs a source from "++show f++" for " ++ show o)
+    to   t = mkSTConsFromChoice Tr (applyDir t curr)
+      ((\x -> leastc{bctcos=MS.singleton (j o',j x,n)}) <$> phyObjFrom (invDir t))
+      (show curr ++ " needs a continuation to "++show t++" for " ++ show o)
 
 envConstraintsT :: TimePos -> (Env,EnvT,Env) -> STCons
 envConstraintsT _ _ = alwaysOk -- TODO

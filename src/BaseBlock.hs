@@ -30,7 +30,7 @@ module BaseBlock (
     ,STCons
     ,ConsHistoryP(..)
     ,Expr,eLeaf,eAll,eAny
-    ,alwaysOk,neverOk,orElse,also
+    ,alwaysOk,neverOk,orElse,also,implies,fromBool
     ,foldExpr
     ,ConsRes
     ,PlayerInput(..)
@@ -271,6 +271,7 @@ data ConsHistoryP = CHP {
      chpspace :: M.Map TimePos (Cons BlockSt, Cons BlockTr)
     ,chpglobal :: CH_GlobalP
   }
+  | Unfulfillable
 {-
   bool = True => all information in block is fully defined. it can now lead to contradictions.
   bool = False => we have not provided all information, so constrainty may be
@@ -302,14 +303,21 @@ foldExpr leaf allExpr anyExpr = go
 alwaysOk :: STCons
 alwaysOk = eLeaf (CHP M.empty unknownGlobalP,"ok")
 
+fromBool :: Bool -> ConsDesc -> STCons
+fromBool b msg = eLeaf
+  (if b then CHP M.empty unknownGlobalP else Unfulfillable,msg)
+
 neverOk :: ConsDesc -> STCons
-neverOk _msg = todo -- eLeaf (CHP M.empty unknownGlobalP,msg)
+neverOk msg = eLeaf (Unfulfillable,msg)
 
 orElse :: Expr a -> Expr a -> Expr a
 orElse a b = eAny [a,b]
 
 also :: Expr a -> Expr a -> Expr a 
 also a b = eAll [a,b]
+
+implies :: Bool -> STCons -> STCons
+implies b c = if b then c else alwaysOk
 
 instance Monoid STCons where
   mempty = alwaysOk

@@ -133,11 +133,11 @@ data Player = Player { pname :: String {- must be non-empty -}, peyes :: Bool, p
   deriving (Eq,Ord)
   {- name,(removed age for loops) , True means eyes are open, inventory -}
 
-data PhyObjT = NoMotionT | MotionT Dir Dir
+data PhyObjT = NoMotionT | MotionT Dir Dir {- valids: LD,LR,UD,RD,RL-}
   | LandFrom Dir -- land from throws. Dir is L, R or U
-  | IntoInventory {- also counting Door or switch -}
+  | IntoInventory {- also counting Door or switch. is this okay like this? without info on interacting object? -}
   | OntoGround {- also from switch or door -}
-  | TParrive Char | TPexit Char -- when objects lying on ground are sent though tp.
+  | TParrive Teleport | TPexit Teleport -- when objects lying on ground are sent though tp.
   | TPsend | TPget -- teleorbs, when they are on ground, have TPsend for the
   -- source and TPget for the destination orb. both get destroyed then.
   deriving (Eq,Ord)
@@ -168,7 +168,7 @@ data PlayerAction =
   -- multiple env. actions can be done at the same time.
   -- e.g. insert key and enter the door
   | TP Bool Teleport {- tpinfo, bool: activator is sent -}
-  | TParriveP Char | TPexitP Char {- char id for teleport -}
+  | TParriveP Teleport | TPexitP Teleport
   deriving (Eq,Ord)
 ;
 
@@ -209,8 +209,8 @@ runpa :: a -> a ->
          (EAOnce -> a) ->
          ([EARep] -> a) ->
          (Bool -> Teleport -> a) ->
-         (Char -> a) ->
-         (Char -> a) ->
+         (Teleport -> a) ->
+         (Teleport -> a) ->
          PlayerAction -> a
 runpa ml mr ju jul jur na pk pt tl tr newto ueo uem tele tpa tpe pa =
   case pa of MoveL -> ml
@@ -227,8 +227,8 @@ runpa ml mr ju jul jur na pk pt tl tr newto ueo uem tele tpa tpe pa =
              UseEnvOnce eao -> ueo eao
              UseEnvMult eam -> uem eam
              TP b tp -> tele b tp
-             TParriveP c -> tpa c
-             TPexitP c -> tpe c
+             TParriveP tp -> tpa tp
+             TPexitP tp -> tpe tp
 ;
 toDirpa :: PlayerAction -> Maybe Dir
 toDirpa = runpa (j L) (j R) (j U) (j U) (j U)
@@ -271,7 +271,7 @@ runPhyObjT :: a
   -> (Dir -> Dir -> a)
   -> (Dir -> a)
   -> a -> a
-  -> (Char -> a) -> (Char -> a)
+  -> (Teleport -> a) -> (Teleport -> a)
   -> a -> a
   -> PhyObjT -> a
 runPhyObjT nomot mot lf inv grd tparr tpext tpsnd tpget o = case o of

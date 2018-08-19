@@ -15,6 +15,8 @@ module Semantics (
     ,envPermeablesT
     ,isGrounded
     ,isPermeable
+    ,phyObjTo
+    ,phyObjFrom
   )
   where
 
@@ -49,5 +51,27 @@ isGrounded ths curr@(t,(x,y)) reason =
 
 isPermeable :: (Block b,Show a) => This b -> TimePos -> a -> STCons
 isPermeable ths curr reason = permeable ths curr (show (curr,ths) ++ " requires permeability (cause: " ++ show reason ++ ")")
+
+
+{- player constraints T -}
+
+
+{- phyobj constraint T -}
+
+phyObjTo :: Dir -> [PhyObjT]
+phyObjTo U = []
+phyObjTo d = map (uncurry MotionT)
+  . filter ((==d).snd)
+  $ zip [L,L,U,R,R] [D,R,D,D,L]
+
+  
+phyObjFrom :: Dir -> [PhyObjT]
+phyObjFrom D = []
+phyObjFrom d = LandFrom d:
+  (map (uncurry MotionT)
+    . filter ((==d).fst)
+    $ zip [L,L,U,R,R] [D,R,D,D,L])
+
+
 
 
