@@ -5,8 +5,8 @@
   as much as it could be refactored into this file -}
 
 module Semantics (
-     successors
-    ,predecessors
+     movingSuccessors
+    ,movingPredecessors
     ,envOnStandables
     ,envOnStandablesT
     ,envInStandables
@@ -21,13 +21,42 @@ module Semantics (
   where
 
 import BaseBlock
+import ViewBase()
 
-successors :: (PlayerT,Player) -> [(Player,PlayerT)]
-successors _ = [] -- TODO:
--- e,g. successors (Motion L D,p) -> [(p,Motion U D),(p,CompletedFalling)]
+movingSuccessors :: (PlayerT,Player) -> [(Player,PlayerT)]
+movingSuccessors (pt,p) = zip [p,p] $ case pt of
+  Initiated MoveL -> [Motion R D, Completed MoveL]
+  Initiated MoveR -> [Motion L D, Completed MoveR]
+  Initiated JumpU  -> [Motion D D, Completed JumpU]
+  Initiated JumpUL -> [Motion D L]
+  Initiated JumpUR -> [Motion D R]
+  Motion L D -> [Motion U D, CompletedFalling]
+  Motion D R -> [Motion L D, Completed JumpUR]
+  Motion R D -> [Motion U D, CompletedFalling]
+  Motion D L -> [Motion R D, Completed JumpUL]
+  Motion D D -> [Motion U D, CompletedFalling]
+  Motion U D -> [Motion U D, CompletedFalling]
+  Motion _ _ -> error $ "success: Motion invalid"
+  _ -> []
 
-predecessors :: (Player,PlayerT) -> [(PlayerT,Player)]
-predecessors _ = [] -- TODO.
+movingPredecessors :: (Player,PlayerT) -> [(PlayerT,Player)]
+movingPredecessors (p,pt) = flip zip [p,p] $ case pt of
+  Initiated _ -> []
+  Motion L D -> [Initiated MoveR ]
+  Motion D R -> [Initiated JumpUR]
+  Motion R D -> [Initiated MoveL ]
+  Motion D L -> [Initiated JumpUL]
+  Motion D D -> [Initiated JumpU ]
+  Motion U D -> [Motion L D, Motion U D, Motion R D]
+  Motion _ _ -> error $ "success: Motiong invalid"
+  Completed MoveL  -> [Initiated MoveL]
+  Completed MoveR  -> [Initiated MoveR]
+  Completed JumpU  -> [Initiated MoveR]
+  Completed JumpUL -> [Motion D L     ]
+  Completed JumpUR -> [Motion D R     ]
+  CompletedFalling -> [Motion L D, Motion U D, Motion R D]
+  Completed _      -> []
+
 
 
 envOnStandables = [Just Solid]
@@ -64,14 +93,10 @@ phyObjTo d = map (uncurry MotionT)
   . filter ((==d).snd)
   $ zip [L,L,U,R,R] [D,R,D,D,L]
 
-  
+
 phyObjFrom :: Dir -> [PhyObjT]
 phyObjFrom D = []
 phyObjFrom d = LandFrom d:
   (map (uncurry MotionT)
     . filter ((==d).fst)
     $ zip [L,L,U,R,R] [D,R,D,D,L])
-
-
-
-

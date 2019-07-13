@@ -9,7 +9,7 @@ module Interference(
     {-
     ,stConsContradictions
     ,adjustGlobalInfo
-    
+
     ,This(..)
     ,is_a
     ,Cons(..)-}
@@ -43,18 +43,18 @@ instance Block BlockSt where
   getter St = fst
   setter St cb = (cb,leastc)
   leastc = BCC{bccps=MS.empty,bccos=MS.empty,bccenv=Nothing}
-  
+
   on_standable ths tpos = mkSTConsFromChoice ths tpos ((\x->leastc{bccenv=x}) <$> envOnStandables)
   in_standable ths tpos = mkSTConsFromChoice ths tpos ((\x->leastc{bccenv=x}) <$> envInStandables)
   permeable    ths tpos = mkSTConsFromChoice ths tpos ((\x->leastc{bccenv=x}) <$> envPermeables  )
-  
+
   blockConstraints = blkConstraints
-  
+
   -- find the block where the player is and reduce all to that block.
   {- todo: user interferences of player to reduce observations during closed eyes -}
   reduceToClosed Proxy spo@(Specific _ player _ mp) = spo {sobservations = (pos, mp M.! pos)}
     where pos = case (M.toList . M.filter (any (player==) . bcps) $ mp) of ((p,_):_) -> p ; [] -> error "reduceToClosed: Player not found"
-  
+
   applypwObs p@Proxy sobs fo fc = if peyes (splayer sobs) then fo sobs else fc (reduceToClosed p sobs)
 ;
 
@@ -73,22 +73,22 @@ instance Block BlockTr where
   getter Tr = snd
   setter Tr cb = (leastc,cb)
   leastc = BCTC{bctcenv=(Nothing,Nothing,Nothing),bctcos=MS.empty,bctcps=MS.empty}
-  
-  on_standable ths tpos = mkSTConsFromChoice ths tpos $ 
+
+  on_standable ths tpos = mkSTConsFromChoice ths tpos $
     (\l t r -> leastc{bctcenv=(l,t,r)}) <$> envOnStandables <*> envOnStandablesT <*> envOnStandables
-  
-  in_standable ths tpos = mkSTConsFromChoice ths tpos $ 
+
+  in_standable ths tpos = mkSTConsFromChoice ths tpos $
     (\l t r -> leastc{bctcenv=(l,t,r)}) <$> envInStandables <*> envInStandablesT <*> envInStandables
-    
-  permeable    ths tpos = mkSTConsFromChoice ths tpos $ 
+
+  permeable    ths tpos = mkSTConsFromChoice ths tpos $
     (\l t r -> leastc{bctcenv=(l,t,r)}) <$> envPermeables   <*> envPermeablesT   <*> envPermeables
-  
+
   blockConstraints = blkConstraintsT
-  
+
   -- get all block where the player is identified
   {- todo: user interferences of player to reduce observations during closed eyes -}
   reduceToClosed Proxy spo@(Specific _ plyr _ mp) =   spo { sobservations = M.filter (any (\(p1,_,p2) -> p1 == plyr || p2 == plyr) . MS.toList . bctps) mp}
-  
+
   applypwObs p@Proxy sobs fo fc = if peyes (splayer sobs) then fo sobs else fc (reduceToClosed p sobs)
 ;
 
@@ -121,7 +121,7 @@ mkSTConsOnGlobal :: CH_GlobalP -> ConsDesc -> STCons
 mkSTConsOnGlobal chgl str = eLeaf (CHP M.empty chgl,str)
 
 mkSTConsFromChoice :: Block b => This b -> TimePos -> [Cons b] -> ConsDesc -> STCons
-mkSTConsFromChoice ths tpos bcs str = eAny $ 
+mkSTConsFromChoice ths tpos bcs str = eAny $
     do bc <- bcs
        let mp = M.singleton tpos $ setter ths bc
        return $ eLeaf (CHP mp unknownGlobalP,str)
@@ -146,7 +146,7 @@ concretize = todo {- use inferMinimal or simply concretize by simulation
   a new constraint-history with minimal consistency requirements
   applied is returned. otherwise a description for the contradiction
   is given.
-  for each viable alternative in 
+  for each viable alternative in
   Uses: (a) check for inconsistencies in ConsHistory
         (b) building bock for concretizing the ConsHistory.
             this needs to walk time-by-time from t=0 to tMax to work properly
@@ -175,7 +175,7 @@ runSTCons chp0 stcons = foldExpr leaf allExpr anyExpr stcons $ chp0
   where
     {- apply constraint x. create singleton branch -}
     leaf (chp,desc) chp' = [(chp `conjunct` chp',desc)]    :: [ConsRes]
-    
+
     {- fold through conjunction. try all alternatives, that arise. -}
     allExpr fs chp =
       let {- list of alternatives with a possible result (Maybe) and a stack of the applied constraints descriptions.
@@ -192,7 +192,7 @@ runSTCons chp0 stcons = foldExpr leaf allExpr anyExpr stcons $ chp0
              case mchp of
                Nothing   -> return $ (Nothing ,"Joint requirements: {"++head ds++"} needs to be consistent with " ++ enclosing "{" "," "}" (tail ds))
                Just chp' -> return $ (Just chp',"Joint requirements: " ++ enclosing "{" "," "}" ds)
-    
+
     {- apply disjunction. keep branches separate. -}
     anyExpr fs chp = fs >>= ($chp) -- didnt expect this impl. to be that short...
 ;
@@ -203,10 +203,10 @@ stConsContradictions ch stcons = foldExpr leaf allExpr anyExpr stcons
   where
     {- apply constraint x  -}
     leaf (chp,desc) = if ch `satisfies` chp then [] else [desc]
-    
+
     {- a conjunction of contradictions is simply the list of contradictions. -}
     allExpr = concat
-    
+
     {- apply disjunction. if there is am empty sub-list,
     without contradictions, then take it. there is no contradiction there.
     if every sub-list has at-least 1 contradiction,
@@ -223,17 +223,17 @@ stConsContradictions ch stcons = foldExpr leaf allExpr anyExpr stcons
 class Partial a where
   conjunct :: a -> a -> Maybe a {- todo: for error reporting, this should also return place of error+desc -}
   {- ASSOCIATIVE -}
-  
+
   type Concrete a :: *
   type Concrete a = a
   toPartial :: Concrete a -> a
   {- INJECTIVE: a /= b -> toPartial a /= toPartial b  -}
   {- more laws in Test.hs -}
-  
+
   {- how to make shrinking happen recursively? -}
   -- shrink
   -- narrower than
-  
+
   {- counting not implemented -}
   satisfies :: Concrete a -> a -> Bool
 ;
@@ -396,7 +396,7 @@ blkConstraintsT curr bct =
 e.g. switch active ==> target active constraint can be formulated here.
 also teleports are checked here. -}
 globalConstraints :: ConsHistory -> STCons
-globalConstraints CH{chglobal} = mconcat $ map (mkTPcons.snd) $ M.toList chglobal 
+globalConstraints CH{chglobal} = mconcat $ map (mkTPcons.snd) $ M.toList chglobal
   where
     mkTPcons tp@Teleport{tpobjs=(ps,os)} =
       (objectAt tp) `foldMap` {- generic programming for checking objects are at source/dest-}
@@ -465,35 +465,35 @@ playerConstraintsT curr p =
   `also` isPermeable Tr curr p
   `also` (case snd3 p of {- teleport cases: handled automatically by global check in self-consistency -}
      Initiated (TP _ tp) -> mkSTConsOnGlobal (M.singleton (tpch tp) tp) $ "Player "++show (fst3 p)++" using tele-orb["++show (tpch tp)++"] fixing it to "++ show tp
-     Completed (TP _ tp) -> mkSTConsOnGlobal (M.singleton (tpch tp) tp) $ "Player "++show (fst3 p)++" used tele-orb[" ++show (tpch tp)++"] fixing it to "++ show tp    
-     Completed (TParriveP tp) -> mkSTConsOnGlobal (M.singleton (tpch tp) tp) $ "Player "++show (fst3 p)++" arrived through tele-orb[" ++show (tpch tp)++"] fixing it to "++ show tp    
-     Completed (TPexitP   tp) -> mkSTConsOnGlobal (M.singleton (tpch tp) tp) $ "Player "++show (fst3 p)++ " exited through tele-orb[" ++show (tpch tp)++"] fixing it to "++ show tp    
+     Completed (TP _ tp) -> mkSTConsOnGlobal (M.singleton (tpch tp) tp) $ "Player "++show (fst3 p)++" used tele-orb[" ++show (tpch tp)++"] fixing it to "++ show tp
+     Completed (TParriveP tp) -> mkSTConsOnGlobal (M.singleton (tpch tp) tp) $ "Player "++show (fst3 p)++" arrived through tele-orb[" ++show (tpch tp)++"] fixing it to "++ show tp
+     Completed (TPexitP   tp) -> mkSTConsOnGlobal (M.singleton (tpch tp) tp) $ "Player "++show (fst3 p)++ " exited through tele-orb[" ++show (tpch tp)++"] fixing it to "++ show tp
      _ {- non-teleport cases -} ->
        (if leavesPuzzle then alwaysOk else case movingNext of
            Nothing -> futureWith Tr St curr (thd3 p) leastc{bccps=MS.singleton (thd3 p)}
-           Just d  -> mkSimpleSTCons Tr (applyDir d curr) leastc{bctcps=succs p} (nextReqStr d)
+           Just d  -> mkSTConsFromChoice Tr (applyDir d curr) ((\x -> leastc{bctcps=MS.singleton x}) <$> succs p) (nextReqStr d)
        ) `also` case movingFrom of
            Nothing -> pastWith   Tr St curr (fst3 p) leastc{bccps=MS.singleton (fst3 p)}
-           Just d  -> mkSimpleSTCons Tr (applyDir d curr) leastc{bctcps=preds p} (fromReqStr d)
+           Just d  -> mkSTConsFromChoice Tr (applyDir d curr) ((\x -> leastc{bctcps=MS.singleton x}) <$> preds p) (fromReqStr d)
     )
   {- todo: higher-prototype: check, what all these items do. -}
   where needsGroundCheck = runpat (const True) (\_ _ -> False) (const True) True (snd3 p)
         {- case (Completed pa): currently, all completed actions require a grounded place as dest. -}
-        
+
         {- physical movement: movingNext = Nothing, if player doesn't move out of current block.
            Just Dir, if the player continues in direction Dir. time-inverse with Next<->From. teleport is not included here -}
         movingNext   = runpat toDirpa (\_ y->Just y) (const Nothing) Nothing (snd3 p)
         nextReqStr d = show (curr,Tr) ++ " requires a continuation of movement "     ++ show (snd3 p) ++ " to " ++ show (applyDir d curr,Tr)
-        
+
         movingFrom   = runpat (const Nothing) (\x _->Just x) fromDirpa (Just U) (snd3 p)
         fromReqStr d = show (curr,Tr) ++ " requires a preceding action to continue " ++ show (snd3 p) ++ " from " ++ show (applyDir d curr,Tr)
-        
+
         leavesPuzzle = case snd3 p of
           (Completed (UseEnvMult es)) -> case es of [] -> False; _non_empty -> last es == TraverseDoor
           _ -> False
-        
-        succs (_,pt,p1) = MS.fromList $ (\(pa ,pta)-> (j pa,j pta,   n)) <$> successors   (pt,p1)
-        preds (p0,pt,_) = MS.fromList $ (\(pta,pa )-> (n   ,j pta,j pa)) <$> predecessors (p0,pt)
+
+        succs (_,pt,p1) = (\(pa ,pta)-> (j pa,j pta,   n)) <$> movingSuccessors   (pt,p1)
+        preds (p0,pt,_) = (\(pta,pa )-> (n   ,j pta,j pa)) <$> movingPredecessors (p0,pt)
 ;
 
 futureWith :: (Show a, Block b, Block c) => This b -> This c -> TimePos -> a -> Cons c -> STCons
@@ -593,4 +593,3 @@ inferMinimal _ = failing "TODO: implement inferMinimal using STCons."
 
 inferMinimalT :: Cons BlockSt -> MayContra BlockSt
 inferMinimalT _ = failing "TODO: implement inferMinimalT using STCons."
-
