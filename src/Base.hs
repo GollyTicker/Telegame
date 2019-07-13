@@ -35,26 +35,18 @@ module Base(
 
 {-
 Main todo:
-. add extensions: Safe, Trusworthy (fromWhat I wish I knew when learning haskell)
 . implement `runTurn` function
+. make basic puzzle runnable from finish to end
+  using hard-coded PlayerInputActions
+
 . finish semantics of constraints in Interference.hs
 . make code easier to understand.
-  . replace monolithic folds by composition of simpler specialized functions.
-    . e.g. filter p . map f rather than concatMap (when p . f)
-    => actually focus and build on COMPOSABILITY?
 . replace instances BlockSt/Tr by St/Tr. clearer view.
 . clean up and tidy and refactor
 . INTEGRATE stack into Haste. unified and reproduceable build
 . use a good haskell IDE to make types support writing even more?
   https://github.com/haskell/haskell-ide-engine
-. use refinement types with liquid haskell to make better compile time assurance
-  . or maybe simply stick to quickcheck? liquid haskell needs more time to learn though...
-    especially, I want to "prove" properties between functions. and this is
-    not immediately possible without existentials
-  . add more properties and tests for quickcheck
 . look at contradiction messages for the example and improve them.
-  . make hunit tests? that would be nice
-. use blaze to generate the html? https://jaspervdj.be/blaze/tutorial.html
 . great idea for touch-input:
   . when mobile browser, make only static screens rather than
     scrollable screen. then allow for touch-gestures to more easily input
@@ -68,7 +60,6 @@ count code size in /src : cloc --exclude-ext=html,js,sh,css .
 
 versions and packages:
 . Haskell Platform Core. 8.4.3
-  . using Z3 4.7.1 https://github.com/Z3Prover/z3/tree/z3-4.7.1
 . stack 1.7.1: from pre-built binary https://github.com/commercialhaskell/stack/releases
 . Haste: pre-built package: https://haste-lang.org/downloads/
 . quickcheck: http://www.cse.chalmers.se/~rjmh/QuickCheck/manual_body.html#16
@@ -77,7 +68,6 @@ normal cabal due to haste's cross compilation.
 . it also uses a different ghc than the sys-wide installation.
 . the haste-installation is found in /usr/local/lib/haste-compiler
 . package multiset (version 0.3.4)
-. NOT-USING-CURRENTLY: liquid haskell for backend verificaiton:https://github.com/ucsd-progsys/liquidhaskell/blob/develop/INSTALL.md
 
 Stack:
 . using two builds. one for running locally on console (main in Maps.hs),
@@ -101,14 +91,10 @@ todo = undefined
 type Time = Int
 type Pos = (Int,Char)
 type TimePos = (Time,Pos)
-{-
-class Count a where
-  count :: [a]
-;-}
+
 data Dir = L | U | R |D
   deriving (Eq,Ord,Data,Typeable)
 ;
---instance Count Dir where count = [L,U,R,D] 
 
 data PhyObj = TOrb Char Int {- identifier, int is 0 or 1 -}
             | Key
@@ -167,7 +153,9 @@ data PlayerAction =
   | UseEnvMult [EARep]
   -- multiple env. actions can be done at the same time.
   -- e.g. insert key and enter the door
+  -- player activates teleorb. may send themselves as well.
   | TP Bool Teleport {- tpinfo, bool: activator is sent -}
+  -- player arrives or leaves via teleportation.
   | TParriveP Teleport | TPexitP Teleport
   deriving (Eq,Ord)
 ;
@@ -177,8 +165,9 @@ data Teleport = Teleport {
     ,tpobjs :: (MultiSet Player, MultiSet PhyObj) -- teleorbs of channel at source/dest. are not sent.
       -- we use the state of the objects at the beginning of the teleport
       -- this only makes a difference for the tp-activating player who loses their teleorb on tp.
+      -- currently, we only support activating teleorbs from ground. Hence inventory change doesn't matter.
     ,tpsource :: TimePos -- tpos before start of teleportation. tp in trans t.
-    ,tpdest   :: TimePos -- tpos at finish of arrival. in case of normal space-tp: t=currTime+1. tp in transe t-1 == currTime.
+    ,tpdest   :: TimePos -- tpos at finish of arrival. in case of normal space-tp: t=currTime+1. tp in trans t-1 == currTime.
   }
   deriving (Eq,Ord)
 
@@ -187,7 +176,6 @@ data Teleport = Teleport {
 -- in additions to the normals commands. they are complemented here
 data PlayerT =
   Initiated PlayerAction
-  -- | Intermediate PlayerAction -- e.g. MoveR for finish moving to right (before falling down now). obsolete due to Motion
   | Motion Dir Dir -- motion: incoming from and outgoing to
   {- possible values. L D , D R, D D, U D and their left-right symmetrical variants -}
   | Completed PlayerAction -- e.g. MoveR for arriving at the right block (an no subsq. falling)
@@ -202,7 +190,7 @@ data PlayerT =
 
 runpa :: a -> a ->
          a -> a -> a ->
-         a -> 
+         a ->
          (PhyObj -> a) -> (PhyObj -> a) ->
          (Int -> PhyObj -> a) -> (Int -> PhyObj -> a) ->
          (Char -> a) ->
@@ -241,14 +229,14 @@ fromDirpa = runpa (j R) (j L) (j D) (j R) (j L)
           n (\_->n) (\_->n) (\_ _->n) (\_ _->n) (\_->n) (\_->n) (\_->n) (\_ _->n) (\_ ->n) (\_ ->n)
 ;
 
-runpat :: (PlayerAction -> a) -> 
+runpat :: (PlayerAction -> a) ->
         --(PlayerAction -> a) ->
           (Dir -> Dir ->   a) ->
           (PlayerAction -> a) ->
           a ->
           PlayerT ->
           a
-runpat _init mot compl complf pat = 
+runpat _init mot compl complf pat =
   case pat of
     Initiated x -> _init x
   --Intermediate x -> inter x
@@ -294,5 +282,3 @@ n = Nothing
 
 j :: a -> Maybe a
 j = Just
-
-

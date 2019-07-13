@@ -51,7 +51,7 @@ map2_P0_t1 = Specific 1 (mkP True) (7,'D') $ fromString
     \S,  S,    S,S,S,  S,   S,S"
 ;
 
-map2_P0_t1T = 
+map2_P0_t1T =
   fmap (M.insert (1,'B')   $ BCT (Blank,EnvStays,Blank) MS.empty  (one (Initiated  JumpUR,mkP True)))
   . fmap (M.insert (1,'A') $ BCT (Blank,EnvStays,Blank) MS.empty  (one (Motion D R       ,mkP True)))
   . fmap (M.insert (2,'A') $ BCT (Platform,EnvStays,Platform) (one (NoMotionT,TOrb 'a' 1)) (one (Completed  JumpUR,mkP True)))
@@ -64,8 +64,8 @@ map2_P0_t2 = Specific 2 (mkP True) (7,'D') $ fromString
     \S,S,    S,S,S,  S,   S,S"
 ;
 
-mytp = TP True $ Teleport {tpch = 'a', tpobjs = (MS.singleton (mkP True),MS.empty), tpsource = (2,(2,'A')), tpdest = (3,(5,'A'))} 
-map2_P0_t2T = 
+mytp = TP True $ Teleport {tpch = 'a', tpobjs = (MS.singleton (mkP True),MS.empty), tpsource = (2,(2,'A')), tpdest = (3,(5,'A'))}
+map2_P0_t2T =
   fmap (M.insert (2,'A')   $ BCT (Platform,EnvStays,Platform) (one (TPsend,TOrb 'a' 1))  (one (Initiated  mytp,mkP True)))
   . fmap (M.insert (5,'A') $ BCT (Blank,EnvStays,Blank)       (one (TPget,TOrb 'a' 0)) (one (Completed  mytp,mkP True)))
   $ noAction map2_P0_t2
@@ -114,15 +114,15 @@ main = do
   print (noAction map1_P0)>> putChar '\n'
   print (noAction map1_P1)>> putChar '\n'
   putChar '\n'
-  
+
   putStrLn "\n\nInitial GameState:"
   print map2_GS
-  
+
   putStrLn "\nWith Contradictions:"
   let contras = contradictions $ (gsch map2_GS)
   let formatter = fst . foldl (\(s,i) c -> if c=='{' then (s++'\n':replicate (i+1) ' '++"{",i+1) else (if c=='}' then (s++"}\n"++replicate (i-1) ' ',i-1) else (s++[c],i))) ("",0)
   mapM_ (\x -> putStrLn (formatter x) >> putStrLn "") contras
   putStrLn $ "\n" ++ show (length contras) ++ " contradictions found."
-  
+
   -- putStrLn "Minimal GameState:" >> print map2_initGS
 ;

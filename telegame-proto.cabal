@@ -7,7 +7,7 @@ license:             GPL
 license-file:        LICENSE
 author:              Swaneet Sahoo
 maintainer:          swaneet06@hotmail.com
-copyright:           2018 Swaneet Sahoo
+copyright:           2019 Swaneet Sahoo
 category:            Game
 build-type:          Simple
 cabal-version:       >=1.10

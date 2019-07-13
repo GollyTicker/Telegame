@@ -143,7 +143,7 @@ success :: a -> MayContra a
 success = Right
 
 maybeToEither :: e -> Maybe a -> Either e a
-maybeToEither e = maybe (Left e) Right 
+maybeToEither e = maybe (Left e) Right
 
 
 
@@ -155,7 +155,7 @@ type TotalObservations = Timed (MultiSet (PWorld BlockSt),MultiSet (PWorld Block
 data GameState = GS {
      gsobs :: TotalObservations
        -- an intial player state for each player AND
-      -- the history of the observations. each element in the sequence contains the 
+      -- the history of the observations. each element in the sequence contains the
       -- current player states as well as the transition observations following that state.
 
     ,gsch :: ConsHistory
@@ -176,7 +176,7 @@ data ConsHistory =
   CH {
     chspace  :: Timed (Space Field)
    ,chsize   :: TimePos
-   ,chglobal :: CH_Global 
+   ,chglobal :: CH_Global
   }
 ;
 -- maxTime: maximum time for which the history is considered. on time progression
@@ -198,6 +198,9 @@ TODO: invsertigate, whether it makes sense to replace ConsHistory
   by ConsHistoryP. then we have a finer level of observations and uncertainity.
   this fits to the lower comment of making player-obervations also more
   fine-grained.
+
+  => eventually implemented by reducing to minimal observable shards -
+  which will become identical to atomic player/physicalObject states and transitions
 
 Distinction:
 1. PlayerActions. each player action, applied on a CondHistory
@@ -222,19 +225,19 @@ Distinction:
    interactions form future.
    The implementation will make use of Interference.hs to get the
    set of conditions, which need to be observed in the current time.
-   
+
       Partial observations might be displayed as:
       ?,  P,?
       ?,? S,?
       denoting, that the player knows, that there is a S block below him
       but doesn't know it's other contents.
-   
+
    Thus we need to change the semantics of playerObservations
    to encode full and partial observations. actually, partial
    observations suffice where a full observation is just a large set
    of partial observations + a flag to denote, that everything was observed.
    => Could Use Cons BlockSt/Tr and ConsHistoryP
-   
+
 3. for each object -> get countable and constructable constraints
    on self-block and other blocks and global information.
    these don't force an unknown to become known.
@@ -313,7 +316,7 @@ neverOk msg = eLeaf (Unfulfillable,msg)
 orElse :: Expr a -> Expr a -> Expr a
 orElse a b = eAny [a,b]
 
-also :: Expr a -> Expr a -> Expr a 
+also :: Expr a -> Expr a -> Expr a
 also a b = eAll [a,b]
 
 implies :: Bool -> STCons -> STCons
@@ -356,4 +359,3 @@ noActionSucc x = let xtr = f x in (xtr, g xtr)
 
 noAction :: (Functor f, Functor g) => f (g BlockSt) -> f (g BlockTr)
 noAction = fmap (fmap (fst . noActionSucc))
-
