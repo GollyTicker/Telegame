@@ -34,6 +34,14 @@ module Base(
 -- is explained in the pages before the last Startup Training Course notes
 
 {-
+        ████████  █████  ███████ ██   ██ ███████
+           ██    ██   ██ ██      ██  ██  ██
+           ██    ███████ ███████ █████   ███████
+           ██    ██   ██      ██ ██  ██       ██
+           ██    ██   ██ ███████ ██   ██ ███████
+-}
+
+{-
 Main todo:
 . implement `runTurn` function
 . make basic puzzle runnable from finish to end
@@ -86,6 +94,15 @@ import Data.MultiSet (MultiSet)
 
 todo :: a
 todo = undefined
+
+
+{-
+        ██████   █████  ███████ ███████     ████████ ██    ██ ██████  ███████ ███████
+        ██   ██ ██   ██ ██      ██             ██     ██  ██  ██   ██ ██      ██
+        ██████  ███████ ███████ █████          ██      ████   ██████  █████   ███████
+        ██   ██ ██   ██      ██ ██             ██       ██    ██      ██           ██
+        ██████  ██   ██ ███████ ███████        ██       ██    ██      ███████ ███████
+-}
 
 {- coordinate system, x y -}
 type Time = Int

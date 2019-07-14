@@ -147,7 +147,13 @@ maybeToEither e = maybe (Left e) Right
 
 
 
-{- =================== GAMESTATE =================== -}
+{-
+         ██████   █████  ███    ███ ███████ ███████ ████████  █████  ████████ ███████
+        ██       ██   ██ ████  ████ ██      ██         ██    ██   ██    ██    ██
+        ██   ███ ███████ ██ ████ ██ █████   ███████    ██    ███████    ██    █████
+        ██    ██ ██   ██ ██  ██  ██ ██           ██    ██    ██   ██    ██    ██
+         ██████  ██   ██ ██      ██ ███████ ███████    ██    ██   ██    ██    ███████
+-}
 -- a gamestate contains all the views+thoughts and actions of each player at each time as well as the environmental changes
 -- it starts with the intial state of the players and adds an evolution
 -- of transitions and successive states of the world and the players.
@@ -191,9 +197,15 @@ data ConsHistory =
 -- Inconsistent histories cannot be created in the first place.
 
 
-{- =============== CONSTRAINT ============= -}
 {-
+         ██████  ██████  ███    ██ ███████ ████████ ██████   █████  ██ ███    ██ ████████ ███████
+        ██      ██    ██ ████   ██ ██         ██    ██   ██ ██   ██ ██ ████   ██    ██    ██
+        ██      ██    ██ ██ ██  ██ ███████    ██    ██████  ███████ ██ ██ ██  ██    ██    ███████
+        ██      ██    ██ ██  ██ ██      ██    ██    ██   ██ ██   ██ ██ ██  ██ ██    ██         ██
+         ██████  ██████  ██   ████ ███████    ██    ██   ██ ██   ██ ██ ██   ████    ██    ███████
+-}
 
+{-
 TODO: invsertigate, whether it makes sense to replace ConsHistory
   by ConsHistoryP. then we have a finer level of observations and uncertainity.
   this fits to the lower comment of making player-obervations also more

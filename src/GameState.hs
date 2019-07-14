@@ -6,7 +6,7 @@ module GameState (
     ,initGS
     ,runTurn
     ,finalizeHistory
-    
+
     {- debug -}
     ,contradictions
   )
@@ -26,7 +26,7 @@ import Data.List (intercalate)
 
 mkGSfromObs :: TotalObservations -> MayContra GameState
 mkGSfromObs obs = fmap (GS obs) $ computeCHfromObs obs
-  
+
 -- creates initial gamestate from an initial set of player worlds
 initGS :: MultiSet (PWorld BlockSt) -> MayContra GameState
 initGS pws = mkGSfromObs (M.singleton 0 (pws,MS.empty))
@@ -37,15 +37,15 @@ Assumptions:
   where a non-empty mapsize is used
 -}
 computeCHfromObs :: TotalObservations -> MayContra ConsHistory
-computeCHfromObs obs = 
-  do  
+computeCHfromObs obs =
+  do
     let initCH = defaultConsHistory (maxT,mapSize)
     applyAllObservations obs initCH
   where mapSize = maybe (0,'A') (getSize . fst) $ M.minView obs
-        getSize (pws,_) = case MS.elems pws of 
+        getSize (pws,_) = case MS.elems pws of
                       [] -> (0,'A')
                       (pw:_) -> ssize pw
-        
+
         -- the maximum time is either the time of the latest observation
         -- or the latest time referenced in a teleportation
         maxT = 1 + max (maybe (-1) (fst.fst) $ M.maxViewWithKey obs) maxTeletime
@@ -62,8 +62,7 @@ computeCHfromObs obs =
         maxDestTimePA (TP _ (Teleport _ _ ts td)) = fst ts `max` fst td
         maxDestTimePA _ = -1
 ;
-
-{-      
+{-
 1. create ConsHistory of maximal size
     size is equal to all maps size. we assume,
     that all maps are of same size.
@@ -71,7 +70,7 @@ computeCHfromObs obs =
     This can be the maximal time observed -
     but it can also be a higher time referenced in a teleportation.
     the 1+ is needed for contradictions check to ensure they don't fall out-of-bounds
-  
+
 2. start at beginning and apply player actions one at a time
 
 3. halt at first error (or at all errors)
@@ -185,7 +184,7 @@ finalizeHistory _ = failing "TODO: implement finalizeHistory"
 -- for this function, inferencability from interactions blocks is nesessary (see Base.hs)
 -- after everyhitn has been made concrete, another
 -- run of checks will be done to assure that the inserted elements
--- didn't create new contradictions
+-- didn't create new contradictions (which shouldn't happen, if we programmed correctly)
 
 foldlWithKeyM :: Monad m => (k -> a -> b -> m b) -> b -> M.Map k a -> m b
 foldlWithKeyM f z = foldM (flip $ uncurry f) z . M.toAscList
@@ -225,19 +224,41 @@ default2DMap (sx,sy) e = M.fromList $ (\x y -> ((x,y),e)) <$> [0..sx] <*> ['A'..
     all actionable players - otherwise not all actions are defined and
     it errors with "not enough actions".
     It might succeed with a new successive gamestate with
-    new observations and an updates consistency history OR
+    new observations and an updated consistency history OR
     it returns contradiction warnings.
 -}
-runTurn :: GameState -> Time -> MultiSet (TimePos,Player,PlayerInput) -> MayContra GameState
+runTurn :: GameState
+            -> Time
+            -> MultiSet (TimePos{- same time assumed everywhere -},Player,PlayerInput)
+            -> MayContra GameState
 runTurn gs0 t mspi =
   do mps <- findAllPlayers t (chspace . gsch $ gs0)
      ensureEveryPlayerIsMatched mps mspi
+
+     let nextTr = nextTrWithPlayerActions t mspi
+     {-
+      1. create new Space BlockTr where all players do their actions
+      2. from current Space BlockSt and the new Space BlockTr
+         complete Space BlockTr
+      3. complete subsequent Space BlockST
+      -- TODO. needs to infer global things in cons history from local player actions.
+     -}
      todo
-  {-
-  pw <- findPWorldInGameState gs0 spi
-  let obs = inputToObs (fmap (sobservations pw,) spi)
-  addToObservations obs gs0-}
+     {-
+     pw <- findPWorldInGameState gs0 spi
+     let obs = inputToObs (fmap (sobservations pw,) spi)
+     addToObservations obs gs0-}
 ;
+
+nextTrWithPlayerActions :: Time {- -> Timed (Space Field)-} -> MultiSet (TimePos, Player, PlayerInput) -> PWorld BlockTr
+nextTrWithPlayerActions t {-tsf-} mspi =
+  todo
+  -- content similar to interferce.hs -> playerConstraintsT.
+  -- eventually all semantics should be refactored into semantics.hs
+
+  -- sp <- maybeToEither [("History is unknown at time " ++ show t)] . M.lookup t $ tsf
+
+
 
 ensureEveryPlayerIsMatched :: MultiSet (TimePos,Player) -> MultiSet (TimePos,Player,PlayerInput) -> MayContra ()
 ensureEveryPlayerIsMatched mps msp =
@@ -258,6 +279,3 @@ findAllPlayers t st =
   . fmap (\xs ->  do (pos,(Just BC{bcps},_)) <- M.toList xs; return (MS.map ((t,pos),) bcps))
   . maybeToEither [("History is unknown at time " ++ show t)]
   $ M.lookup t st
-
-
-
